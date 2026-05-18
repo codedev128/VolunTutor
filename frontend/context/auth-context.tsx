@@ -2,29 +2,31 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-export interface TutorUser {
+export interface AppUser {
   id: string;
   name: string;
   email: string;
-  role: "tutor";
+  role: "tutor" | "student";
 }
 
-interface StoredUser extends TutorUser {
+export type TutorUser = AppUser;
+
+interface StoredUser extends AppUser {
   password: string;
 }
 
 interface AuthContextType {
-  user: TutorUser | null;
+  user: AppUser | null;
   isLoading: boolean;
-  signUp: (name: string, email: string, password: string) => { ok: boolean; error?: string };
-  signIn: (email: string, password: string) => { ok: boolean; error?: string };
+  signUp: (name: string, email: string, password: string, role?: "tutor" | "student") => { ok: boolean; error?: string; user?: AppUser };
+  signIn: (email: string, password: string) => { ok: boolean; error?: string; user?: AppUser };
   signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<TutorUser | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -37,17 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  function signUp(name: string, email: string, password: string) {
+  function signUp(name: string, email: string, password: string, role: "tutor" | "student" = "tutor") {
     const users: StoredUser[] = JSON.parse(localStorage.getItem("vt_users") || "[]");
     if (users.find((u) => u.email === email)) {
       return { ok: false, error: "An account with this email already exists." };
     }
-    const newUser: TutorUser = { id: Date.now().toString(), name, email, role: "tutor" };
+    const newUser: AppUser = { id: Date.now().toString(), name, email, role };
     users.push({ ...newUser, password });
     localStorage.setItem("vt_users", JSON.stringify(users));
     localStorage.setItem("vt_session", JSON.stringify(newUser));
     setUser(newUser);
-    return { ok: true };
+    return { ok: true, user: newUser };
   }
 
   function signIn(email: string, password: string) {
@@ -57,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { password: _pw, ...session } = found;
     localStorage.setItem("vt_session", JSON.stringify(session));
     setUser(session);
-    return { ok: true };
+    return { ok: true, user: session };
   }
 
   function signOut() {

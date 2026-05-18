@@ -14,36 +14,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/context/auth-context";
 
 function BrandMark() {
   return (
-    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-amber-100 border border-amber-300">
-      <svg className="stroke-amber-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="12" strokeWidth="8" />
+    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-teal-100 border border-teal-300">
+      <svg className="stroke-teal-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" fill="none">
+        <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     </div>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-      <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-      <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
-      <path d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
-      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-    </svg>
-  );
-}
-
-function AmberButton({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled}
-      className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-400 active:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed">
-      {children}
-    </button>
   );
 }
 
@@ -52,12 +32,12 @@ function SignUpDialog() {
   const id = useId();
   const router = useRouter();
   const { signUp } = useAuth();
-  const [name, setName]           = useState("");
-  const [email, setEmail]         = useState("");
-  const [password, setPassword]   = useState("");
-  const [confirm, setConfirm]     = useState("");
-  const [error, setError]         = useState("");
-  const [loading, setLoading]     = useState(false);
+  const [name, setName]         = useState("");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
 
   function handleSignUp() {
     setError("");
@@ -71,9 +51,13 @@ function SignUpDialog() {
       setError("Passwords do not match."); return;
     }
     setLoading(true);
-    const result = signUp(name.trim(), email.trim(), password);
-    if (!result.ok) { setError(result.error ?? "Something went wrong."); setLoading(false); return; }
-    router.push("/become/onboarding");
+    const result = signUp(name.trim(), email.trim(), password, "student");
+    if (!result.ok) {
+      setError(result.error ?? "Something went wrong.");
+      setLoading(false);
+      return;
+    }
+    router.push("/find/dashboard");
   }
 
   return (
@@ -87,9 +71,9 @@ function SignUpDialog() {
         <div className="flex flex-col items-center gap-2">
           <BrandMark />
           <DialogHeader>
-            <DialogTitle className="sm:text-center">Become a VolunTutor</DialogTitle>
+            <DialogTitle className="sm:text-center">Find your VolunTutor</DialogTitle>
             <DialogDescription className="sm:text-center">
-              Create your account — then set up your subjects and schedule.
+              Create a free student account to submit requests and track your matches.
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -97,11 +81,11 @@ function SignUpDialog() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor={`${id}-name`}>Full name</Label>
-              <Input id={`${id}-name`} placeholder="Jane Smith" type="text" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input id={`${id}-name`} placeholder="Your name" type="text" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${id}-email`}>Email</Label>
-              <Input id={`${id}-email`} placeholder="jane@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input id={`${id}-email`} placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${id}-password`}>Password</Label>
@@ -113,16 +97,17 @@ function SignUpDialog() {
             </div>
           </div>
           {error && <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</p>}
-          <AmberButton onClick={handleSignUp} disabled={loading}>{loading ? "Creating account…" : "Sign up"}</AmberButton>
+          <button
+            type="button"
+            onClick={handleSignUp}
+            disabled={loading}
+            className="w-full rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-400 active:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Creating account…" : "Sign up"}
+          </button>
         </div>
-        <div className="flex items-center gap-3 before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-          <span className="text-xs text-muted-foreground">Or</span>
-        </div>
-        <button type="button" className="w-full flex items-center justify-center gap-2.5 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium shadow-sm transition hover:bg-accent">
-          <GoogleIcon />Continue with Google
-        </button>
         <p className="text-center text-xs text-muted-foreground">
-          By signing up you agree to our <a className="underline hover:no-underline" href="#">Terms</a>.
+          Always free. By signing up you agree to our <a className="underline hover:no-underline" href="#">Terms</a>.
         </p>
       </DialogContent>
     </Dialog>
@@ -136,7 +121,6 @@ function SignInDialog() {
   const { signIn } = useAuth();
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
@@ -146,8 +130,12 @@ function SignInDialog() {
     setLoading(true);
     const result = signIn(email.trim(), password);
     if (!result.ok) { setError(result.error ?? "Something went wrong."); setLoading(false); return; }
-    if (result.user?.role === "student") { router.push("/find/dashboard"); return; }
-    router.push("/become/dashboard");
+    if (result.user?.role === "tutor") {
+      setError("That email belongs to a tutor account. Sign in at the Become a VolunTutor page.");
+      setLoading(false);
+      return;
+    }
+    router.push("/find/dashboard");
   }
 
   return (
@@ -162,51 +150,43 @@ function SignInDialog() {
           <BrandMark />
           <DialogHeader>
             <DialogTitle className="sm:text-center">Welcome back</DialogTitle>
-            <DialogDescription className="sm:text-center">Enter your credentials to continue tutoring.</DialogDescription>
+            <DialogDescription className="sm:text-center">Sign in to view your matches and submit new requests.</DialogDescription>
           </DialogHeader>
         </div>
         <div className="space-y-5">
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor={`${id}-email`}>Email</Label>
-              <Input id={`${id}-email`} placeholder="jane@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input id={`${id}-email`} placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${id}-password`}>Password</Label>
               <Input id={`${id}-password`} placeholder="Enter your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSignIn()} />
             </div>
           </div>
-          <div className="flex justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Checkbox id={`${id}-remember`} checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
-              <Label htmlFor={`${id}-remember`} className="font-normal text-muted-foreground">Remember me</Label>
-            </div>
-            <a className="text-sm text-amber-600 underline hover:no-underline" href="#">Forgot password?</a>
-          </div>
           {error && <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</p>}
-          <AmberButton onClick={handleSignIn} disabled={loading}>{loading ? "Signing in…" : "Sign in"}</AmberButton>
+          <button
+            type="button"
+            onClick={handleSignIn}
+            disabled={loading}
+            className="w-full rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-400 active:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
         </div>
-        <div className="flex items-center gap-3 before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-          <span className="text-xs text-muted-foreground">Or</span>
-        </div>
-        <button type="button" className="w-full flex items-center justify-center gap-2.5 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium shadow-sm transition hover:bg-accent">
-          <GoogleIcon />Login with Google
-        </button>
       </DialogContent>
     </Dialog>
   );
 }
 
 /* ── Page ────────────────────────────────────────────── */
-export default function BecomePage() {
+export default function FindAuthPage() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
 
   useEffect(() => {
     if (!isLoading && user) {
-      if (user.role === "student") { router.replace("/find/dashboard"); return; }
-      const hasProfile = !!localStorage.getItem(`vt_tutor_profile_${user.id}`);
-      router.replace(hasProfile ? "/become/dashboard" : "/become/onboarding");
+      router.replace(user.role === "student" ? "/find/dashboard" : "/become/dashboard");
     }
   }, [user, isLoading, router]);
 
@@ -228,36 +208,48 @@ export default function BecomePage() {
       <div className="relative flex flex-col items-center px-6 text-center">
         <div className="mb-10 flex flex-col items-center">
           <h1 className="max-w-xl text-4xl font-bold leading-tight tracking-tight text-gray-900 sm:text-5xl">
-            Become a <span className="italic text-amber-500">VolunTutor.</span>
+            Find your <span className="italic text-amber-500">VolunTutor.</span>
           </h1>
           <p className="mt-4 max-w-sm text-base leading-relaxed text-gray-600">
-            Share your knowledge, change a life. Always free — for you and your students.
+            Create a free account or sign back in — your matched tutors are waiting.
           </p>
         </div>
 
         <div className="flex w-full max-w-2xl flex-col gap-5 sm:flex-row">
+          {/* Sign up card */}
           <div className="flex flex-1 flex-col gap-5 rounded-2xl border border-black/10 bg-white/80 p-8 shadow-sm backdrop-blur-sm">
             <div className="flex flex-col gap-1 text-left">
-              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">New here</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-teal-600">New student</p>
               <h2 className="text-xl font-bold text-gray-900">Create an account</h2>
-              <p className="mt-1 text-sm text-gray-500">Join thousands of tutors making a difference.</p>
+              <p className="mt-1 text-sm text-gray-500">Get matched with a volunteer tutor for free.</p>
             </div>
             <SignUpDialog />
           </div>
+
+          {/* Divider */}
           <div className="flex items-center justify-center sm:flex-col">
             <div className="h-px w-full bg-gray-200 sm:h-full sm:w-px" />
             <span className="shrink-0 px-3 py-2 text-xs font-medium text-gray-400">or</span>
             <div className="h-px w-full bg-gray-200 sm:h-full sm:w-px" />
           </div>
+
+          {/* Sign in card */}
           <div className="flex flex-1 flex-col gap-5 rounded-2xl border border-black/10 bg-white/80 p-8 shadow-sm backdrop-blur-sm">
             <div className="flex flex-col gap-1 text-left">
-              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">Returning tutor</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-teal-600">Returning student</p>
               <h2 className="text-xl font-bold text-gray-900">Sign back in</h2>
               <p className="mt-1 text-sm text-gray-500">Pick up right where you left off.</p>
             </div>
             <SignInDialog />
           </div>
         </div>
+
+        <p className="mt-8 text-sm text-gray-400">
+          Are you a tutor?{" "}
+          <Link href="/become" className="font-semibold text-amber-600 hover:underline">
+            Sign in here →
+          </Link>
+        </p>
       </div>
     </RhythmicRipplesBackground>
   );

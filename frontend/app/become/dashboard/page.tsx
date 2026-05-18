@@ -17,6 +17,7 @@ interface StudentRequest {
   gradeLevel: string;
   helpMessage: string;
   availabilitySlots: string[];
+  recurrenceWeeks?: number;
   submittedAt: string;
   status: "pending" | "accepted";
   acceptedByTutorId?: string;
@@ -46,6 +47,7 @@ interface ActiveMatch {
   matchedAt: string;
   sessionCount: number;
   nextSession: string | null;
+  bookedSlots?: string[];
   status: MatchStatus;
   unreadMessages: number;
 }
@@ -74,7 +76,12 @@ function getWeekDates(offset: number): Date[] {
     return d;
   });
 }
-function isoDate(d: Date) { return d.toISOString().split("T")[0]; }
+function isoDate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 function slotKey(d: Date, h: number) { return `${isoDate(d)}-${h}`; }
 function formatHour(h: number) {
   if (h === 0 || h === 24) return "12 AM";
@@ -111,6 +118,58 @@ function getDefaultTab(matches: ActiveMatch[]): "morning" | "evening" {
   return "morning";
 }
 
+function nextSessionToSlotKey(nextSession: string): string | null {
+  const m = nextSession.match(/^(\w+)\s+(\d+):(\d+)\s+(AM|PM)$/);
+  if (!m) return null;
+  const [, day, hourStr, , ampm] = m;
+  const dayIdx = DAY_LABELS.indexOf(day);
+  if (dayIdx === -1) return null;
+  let hour = parseInt(hourStr);
+  if (ampm === "PM" && hour !== 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+  const weekDates = getWeekDates(0);
+  return slotKey(weekDates[dayIdx], hour);
+}
+
+function slotKeyToSession(key: string): string {
+  const parts = key.split("-");
+  const hour = parseInt(parts[3]);
+  const date = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
+  const dow = date.getDay();
+  const dayIdx = dow === 0 ? 6 : dow - 1;
+  const h12 = hour === 0 || hour === 12 ? 12 : hour > 12 ? hour - 12 : hour;
+  const ampm = hour < 12 ? "AM" : "PM";
+  return `${DAY_LABELS[dayIdx]} ${h12}:00 ${ampm}`;
+}
+
+function slotKeyToLabel(key: string): string {
+  const parts = key.split("-");
+  const hour = parseInt(parts[3]);
+  const date = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
+  const dow = date.getDay();
+  const dayIdx = dow === 0 ? 6 : dow - 1;
+  return `${DAY_LABELS[dayIdx]}, ${date.getDate()} ${date.toLocaleDateString("en-GB", { month: "short" })} · ${formatHourRange(hour)}`;
+}
+
+function expandSlot(key: string, weeks: number): string[] {
+  const parts = key.split("-");
+  const hour = parseInt(parts[3]);
+  const base = new Date(`${parts[0]}-${parts[1]}-${parts[2]}T00:00:00`);
+  return Array.from({ length: weeks }, (_, w) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + w * 7);
+    return `${isoDate(d)}-${hour}`;
+  });
+}
+
+const RECURRENCE_LABELS: Record<number, string> = {
+  1: "One-off",
+  2: "2 weeks",
+  3: "3 weeks",
+  4: "1 month",
+  8: "2 months",
+};
+
 function DashboardTimetable({
   selected,
   onToggle,
@@ -127,30 +186,26 @@ function DashboardTimetable({
   const hours = tab === "morning" ? MORNING_HOURS : EVENING_HOURS;
 
   const bookedSlots = new Map<string, { initials: string; name: string }>();
-  if (weekOffset === 0) {
-    matches.forEach((m) => {
-      if (m.nextSession) {
-        const key = parseNextSessionKey(dates, m.nextSession);
-        if (key) bookedSlots.set(key, { initials: m.avatar, name: m.studentName });
-      }
-    });
-  }
-
-  const morningBooked = weekOffset === 0 && matches.some((m) => {
-    if (!m.nextSession) return false;
-    const match = m.nextSession.match(/(\d+):(\d+)\s+(AM|PM)/);
-    if (!match) return false;
-    let h = parseInt(match[1]);
-    if (match[3] === "PM" && h !== 12) h += 12;
-    return h < 12;
+  matches.forEach((m) => {
+    if (m.bookedSlots && m.bookedSlots.length > 0) {
+      m.bookedSlots.forEach((k) => {
+        bookedSlots.set(k, { initials: m.avatar, name: m.studentName });
+      });
+    } else if (weekOffset === 0 && m.nextSession) {
+      const key = parseNextSessionKey(dates, m.nextSession);
+      if (key) bookedSlots.set(key, { initials: m.avatar, name: m.studentName });
+    }
   });
-  const eveningBooked = weekOffset === 0 && matches.some((m) => {
-    if (!m.nextSession) return false;
-    const match = m.nextSession.match(/(\d+):(\d+)\s+(AM|PM)/);
-    if (!match) return false;
-    let h = parseInt(match[1]);
-    if (match[3] === "PM" && h !== 12) h += 12;
-    return h >= 12;
+
+  const morningBooked = [...bookedSlots.keys()].some((k) => {
+    const hour = parseInt(k.split("-")[3]);
+    const ds = k.split("-").slice(0, 3).join("-");
+    return hour < 12 && dates.some((d) => isoDate(d) === ds);
+  });
+  const eveningBooked = [...bookedSlots.keys()].some((k) => {
+    const hour = parseInt(k.split("-")[3]);
+    const ds = k.split("-").slice(0, 3).join("-");
+    return hour >= 12 && dates.some((d) => isoDate(d) === ds);
   });
 
   return (
@@ -519,6 +574,7 @@ export default function TutorDashboard() {
   const [bioEditing, setBioEditing] = useState(false);
   const [bioInput, setBioInput] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [dismissedSlots, setDismissedSlots] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Record<string, { from: "tutor" | "student"; body: string }[]>>({
     m1: [
       { from: "student", body: "Hi! I'm having trouble with completing the square. Can we start there?" },
@@ -542,6 +598,8 @@ export default function TutorDashboard() {
       if (pic) setProfilePic(pic);
       const savedBio = localStorage.getItem(`vt_tutor_bio_${user.id}`);
       if (savedBio) setBio(savedBio);
+      const ds = localStorage.getItem(`vt_tutor_dismissed_slots_${user.id}`);
+      if (ds) setDismissedSlots(new Set(JSON.parse(ds)));
     } catch { /* ignore */ }
   }, [user]);
 
@@ -571,44 +629,112 @@ export default function TutorDashboard() {
         });
         setMessages((prev) => {
           const next = { ...prev };
-          savedMatches.forEach((m) => { if (!next[m.id]) next[m.id] = []; });
+          savedMatches.forEach((m) => {
+            if (!next[m.id]) {
+              try { next[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
+              catch { next[m.id] = []; }
+            }
+          });
           return next;
         });
       }
     } catch { /* ignore */ }
   }, [user]);
 
-  function handleAccept(req: StudentRequest) {
-    const newMatch: ActiveMatch = {
-      id: req.id,
-      studentName: req.studentName,
-      avatar: req.avatar,
-      subject: req.subject,
-      gradeLevel: GRADE_LABELS[req.gradeLevel] ?? req.gradeLevel,
-      proficiency: "BEGINNER",
-      helpMessage: req.helpMessage,
-      matchedAt: "just now",
-      sessionCount: 0,
-      nextSession: null,
-      status: "AWAITING_FIRST_SESSION",
-      unreadMessages: 0,
-    };
-    setMatches((prev) => [...prev, newMatch]);
-    setMessages((prev) => ({ ...prev, [req.id]: [] }));
-    const existing: ActiveMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${user!.id}`) || "[]");
-    localStorage.setItem(`vt_tutor_matches_${user!.id}`, JSON.stringify([...existing, newMatch]));
-    const allReqs: StudentRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-    localStorage.setItem("vt_student_requests", JSON.stringify(
-      allReqs.map((r) => r.id === req.id ? { ...r, status: "accepted", acceptedByTutorId: user!.id } : r)
-    ));
-    setPendingRequests((prev) => prev.filter((r) => r.id !== req.id));
-    setActiveTab("matches");
+  // Sync pending requests across tabs — fires when another tab writes to vt_student_requests
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== "vt_student_requests") return;
+      try {
+        const allReqs: StudentRequest[] = JSON.parse(e.newValue || "[]");
+        setPendingRequests((prev) =>
+          prev.filter((r) => {
+            const fresh = allReqs.find((a) => a.id === r.id);
+            return fresh?.status === "pending";
+          })
+        );
+      } catch { /* ignore */ }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  function dismissSlot(reqId: string, slot: string) {
+    const key = `${reqId}|${slot}`;
+    setDismissedSlots((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      try { localStorage.setItem(`vt_tutor_dismissed_slots_${user!.id}`, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
   }
 
-  function handleReject(req: StudentRequest) {
-    const rejected: string[] = JSON.parse(localStorage.getItem(`vt_tutor_rejected_${user!.id}`) || "[]");
-    localStorage.setItem(`vt_tutor_rejected_${user!.id}`, JSON.stringify([...rejected, req.id]));
+  function handleAcceptSlot(req: StudentRequest, slot: string) {
+    // Re-read from localStorage to guard against another tutor accepting first
+    try {
+      const allReqs: StudentRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
+      const fresh = allReqs.find((r) => r.id === req.id);
+      if (!fresh || fresh.status !== "pending") {
+        // Already claimed — remove it from our local view and bail
+        setPendingRequests((prev) => prev.filter((r) => r.id !== req.id));
+        return;
+      }
+    } catch { /* ignore */ }
+
+    const session = slotKeyToSession(slot);
+    const weeks = req.recurrenceWeeks ?? 1;
+    const newSlots = expandSlot(slot, weeks);
+    const existingMatch = matches.find((m) => m.id === req.id);
+    if (existingMatch) {
+      const updated: ActiveMatch = {
+        ...existingMatch,
+        bookedSlots: [...(existingMatch.bookedSlots ?? []), ...newSlots],
+        nextSession: existingMatch.nextSession ?? session,
+        status: "ACTIVE",
+      };
+      setMatches((prev) => prev.map((m) => m.id === req.id ? updated : m));
+      const saved: ActiveMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${user!.id}`) || "[]");
+      localStorage.setItem(`vt_tutor_matches_${user!.id}`, JSON.stringify(
+        saved.some((m) => m.id === req.id) ? saved.map((m) => m.id === req.id ? updated : m) : [...saved, updated]
+      ));
+    } else {
+      const newMatch: ActiveMatch = {
+        id: req.id,
+        studentName: req.studentName,
+        avatar: req.avatar,
+        subject: req.subject,
+        gradeLevel: GRADE_LABELS[req.gradeLevel] ?? req.gradeLevel,
+        proficiency: "BEGINNER",
+        helpMessage: req.helpMessage,
+        matchedAt: "just now",
+        sessionCount: 0,
+        nextSession: session,
+        bookedSlots: newSlots,
+        status: "ACTIVE",
+        unreadMessages: 0,
+      };
+      setMatches((prev) => [...prev, newMatch]);
+      setMessages((prev) => ({ ...prev, [req.id]: [] }));
+      const saved: ActiveMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${user!.id}`) || "[]");
+      localStorage.setItem(`vt_tutor_matches_${user!.id}`, JSON.stringify([...saved, newMatch]));
+    }
+
+    // Mark request as accepted in shared storage — this is visible to all other tutors
+    try {
+      const allReqs: StudentRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
+      const updated = allReqs.map((r) =>
+        r.id === req.id ? { ...r, status: "accepted" as const, acceptedByTutorId: user!.id } : r
+      );
+      localStorage.setItem("vt_student_requests", JSON.stringify(updated));
+    } catch { /* ignore */ }
+
+    // Remove the request from this tutor's pending list immediately
     setPendingRequests((prev) => prev.filter((r) => r.id !== req.id));
+    dismissSlot(req.id, slot);
+  }
+
+  function handleRejectSlot(req: StudentRequest, slot: string) {
+    dismissSlot(req.id, slot);
   }
 
   const toggleSlot = useCallback((key: string) => {
@@ -644,6 +770,20 @@ export default function TutorDashboard() {
   const totalSessions = matches.reduce((a, m) => a + m.sessionCount, 0);
   const activeMatch = matches.find((m) => m.id === activeMatchId);
 
+  const bookedSlotKeys = new Set<string>();
+  matches.forEach((m) => {
+    (m.bookedSlots ?? []).forEach((k) => bookedSlotKeys.add(k));
+    if ((!m.bookedSlots || m.bookedSlots.length === 0) && m.nextSession) {
+      const k = nextSessionToSlotKey(m.nextSession);
+      if (k) bookedSlotKeys.add(k);
+    }
+  });
+  const visibleRequestCount = pendingRequests.filter((req) =>
+    (req.availabilitySlots ?? []).some(
+      (s) => !bookedSlotKeys.has(s) && !dismissedSlots.has(`${req.id}|${s}`)
+    )
+  ).length;
+
   function handleAvatarFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -664,10 +804,16 @@ export default function TutorDashboard() {
 
   function sendMessage() {
     if (!messageInput.trim() || !activeMatchId) return;
+    const newMsg = { from: "tutor" as const, body: messageInput.trim(), sentAt: new Date().toISOString() };
     setMessages((prev) => ({
       ...prev,
-      [activeMatchId]: [...(prev[activeMatchId] ?? []), { from: "tutor", body: messageInput.trim() }],
+      [activeMatchId]: [...(prev[activeMatchId] ?? []), newMsg],
     }));
+    try {
+      const key = `vt_messages_${activeMatchId}`;
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(key, JSON.stringify([...existing, newMsg]));
+    } catch { /* ignore */ }
     setMessageInput("");
   }
 
@@ -701,7 +847,7 @@ export default function TutorDashboard() {
       {/* ── Navbar ── */}
       <nav className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
-          <Link href="/" className="flex items-center">
+          <Link href="/become/dashboard" className="flex items-center">
             <Image src="/Guide_app_logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain mix-blend-multiply" priority />
           </Link>
           <div className="flex items-center gap-3">
@@ -776,7 +922,7 @@ export default function TutorDashboard() {
             <div className="flex items-center gap-1 rounded-xl border border-black/10 bg-white p-1.5 shadow-sm w-fit">
               {(["matches", "requests", "messages"] as const).map((tab) => {
                 const unread = matches.reduce((a, m) => a + m.unreadMessages, 0);
-                const badge = tab === "messages" ? unread : tab === "requests" ? pendingRequests.length : 0;
+                const badge = tab === "messages" ? unread : tab === "requests" ? visibleRequestCount : 0;
                 const label = tab === "matches" ? "Current Students" : tab === "requests" ? "Requests" : "Messages";
                 return (
                   <button key={tab} onClick={() => setActiveTab(tab)}
@@ -863,58 +1009,99 @@ export default function TutorDashboard() {
             {/* ── Requests tab ── */}
             {activeTab === "requests" && (
               <div className="space-y-4">
-                {pendingRequests.length === 0 && (
-                  <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-gray-200 bg-white py-16 text-center">
-                    <div className="flex size-14 items-center justify-center rounded-full bg-amber-50 border border-amber-100">
-                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-600">No pending requests</p>
-                      <p className="mt-1 text-sm text-gray-400">New student requests matching your subjects will appear here.</p>
-                    </div>
-                  </div>
-                )}
-                {pendingRequests.map((req) => (
-                  <div key={req.id} className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
-                    <div className="flex items-start gap-4">
-                      <Avatar initials={req.avatar} size="md" color="blue" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-bold text-gray-900">{req.studentName}</h4>
-                          <span className="text-xs text-gray-400">· {new Date(req.submittedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap gap-2">
-                          <span className="rounded-full bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-800">{req.subject}</span>
-                          <span className="rounded-full bg-gray-100 border border-gray-200 px-2.5 py-0.5 text-xs font-semibold text-gray-700">{GRADE_LABELS[req.gradeLevel] ?? req.gradeLevel}</span>
-                        </div>
-                        <p className="mt-2.5 text-sm leading-relaxed text-gray-600 italic">&ldquo;{req.helpMessage}&rdquo;</p>
-                      </div>
-                      {/* Accept / Reject */}
-                      <div className="flex shrink-0 gap-2">
-                        <button
-                          onClick={() => handleReject(req)}
-                          title="Decline request"
-                          className="flex size-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-500 transition hover:bg-red-100 hover:border-red-300"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                {(() => {
+                  const visibleRequests = pendingRequests.filter((req) =>
+                    (req.availabilitySlots ?? []).some(
+                      (s) => !bookedSlotKeys.has(s) && !dismissedSlots.has(`${req.id}|${s}`)
+                    )
+                  );
+                  if (visibleRequests.length === 0) {
+                    return (
+                      <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-gray-200 bg-white py-16 text-center">
+                        <div className="flex size-14 items-center justify-center rounded-full bg-amber-50 border border-amber-100">
+                          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                           </svg>
-                        </button>
-                        <button
-                          onClick={() => handleAccept(req)}
-                          title="Accept request"
-                          className="flex size-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100 hover:border-emerald-300"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                          </svg>
-                        </button>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-600">No pending requests</p>
+                          <p className="mt-1 text-sm text-gray-400">New student requests matching your subjects will appear here.</p>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  }
+                  return visibleRequests.map((req) => {
+                    const visibleSlots = (req.availabilitySlots ?? []).filter(
+                      (s) => !bookedSlotKeys.has(s) && !dismissedSlots.has(`${req.id}|${s}`)
+                    );
+                    return (
+                      <div key={req.id} className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
+                        {/* Student info header */}
+                        <div className="flex items-start gap-4">
+                          <Avatar initials={req.avatar} size="md" color="blue" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="font-bold text-gray-900">{req.studentName}</h4>
+                              <span className="text-xs text-gray-400">· {new Date(req.submittedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-2">
+                              <span className="rounded-full bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-800">{req.subject}</span>
+                              <span className="rounded-full bg-gray-100 border border-gray-200 px-2.5 py-0.5 text-xs font-semibold text-gray-700">{GRADE_LABELS[req.gradeLevel] ?? req.gradeLevel}</span>
+                              {(req.recurrenceWeeks ?? 1) > 1 ? (
+                                <span className="flex items-center gap-1 rounded-full bg-violet-50 border border-violet-200 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                                  </svg>
+                                  Recurring · {RECURRENCE_LABELS[req.recurrenceWeeks ?? 1] ?? `${req.recurrenceWeeks}w`}
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-gray-50 border border-gray-200 px-2.5 py-0.5 text-xs font-medium text-gray-400">One-off</span>
+                              )}
+                            </div>
+                            <p className="mt-2.5 text-sm leading-relaxed text-gray-600 italic">&ldquo;{req.helpMessage}&rdquo;</p>
+                          </div>
+                        </div>
+                        {/* Per-slot accept/reject */}
+                        <div className="mt-4 border-t border-gray-100 pt-4 space-y-2">
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-amber-600 mb-3">Requested time slots</p>
+                          {visibleSlots.map((slot) => (
+                            <div key={slot} className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-4 py-2.5">
+                              <div className="flex items-center gap-2.5">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                                </svg>
+                                <span className="text-sm font-medium text-gray-700">{slotKeyToLabel(slot)}</span>
+                                {(req.recurrenceWeeks ?? 1) > 1 && (
+                                  <span className="text-xs text-violet-500 font-medium">× {req.recurrenceWeeks} weeks</span>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleRejectSlot(req, slot)}
+                                  title="Decline this slot"
+                                  className="flex size-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-500 transition hover:bg-red-100 hover:border-red-300"
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => handleAcceptSlot(req, slot)}
+                                  title="Accept this slot"
+                                  className="flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100 hover:border-emerald-300"
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             )}
 

@@ -623,15 +623,7 @@ export default function TutorDashboard() {
   const [meetInvites, setMeetInvites] = useState<Record<string, boolean>>({});
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [dismissedSlots, setDismissedSlots] = useState<Set<string>>(new Set());
-  const [messages, setMessages] = useState<Record<string, { from: "tutor" | "student"; body: string }[]>>({
-    m1: [
-      { from: "student", body: "Hi! I'm having trouble with completing the square. Can we start there?" },
-      { from: "tutor",   body: "Of course! Let's work through a few examples step by step." },
-    ],
-    m2: [],
-    m3: [{ from: "student", body: "Thank you for explaining ionic bonding last session — it finally clicked!" }],
-    m4: [{ from: "student", body: "Hello! Looking forward to our first session. When works best for you?" }],
-  });
+  const [messages, setMessages] = useState<Record<string, { from: "tutor" | "student"; body: string; sentAt?: string }[]>>({});
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/become");
@@ -708,23 +700,50 @@ export default function TutorDashboard() {
             const ids = new Set(prev.map((m) => m.id));
             return [...prev, ...mappedMatches.filter((m) => !ids.has(m.id))];
           });
-          setMessages((prev) => {
-            const next = { ...prev };
-            mappedMatches.forEach((m) => {
-              if (!next[m.id]) {
-                try { next[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
-                catch { next[m.id] = []; }
-              }
-            });
-            return next;
-          });
+
+          // Load messages from DB for each match
+          const msgsMap: Record<string, { from: "tutor" | "student"; body: string; sentAt?: string }[]> = {};
+          for (const m of mappedMatches) {
+            try {
+              const dbMsgs = await db.getMessages(m.id);
+              msgsMap[m.id] = dbMsgs.map((msg) => ({
+                from: msg.from_role as "tutor" | "student",
+                body: msg.body,
+                sentAt: msg.sent_at,
+              }));
+            } catch { msgsMap[m.id] = []; }
+          }
+          setMessages(msgsMap);
+
+          // Restore meet state from DB
+          const meetMap: Record<string, boolean> = {};
+          savedMatches.forEach((m) => { if (m.meet_active) meetMap[m.id] = true; });
+          setMeetInvites(meetMap);
         }
       } catch { /* ignore */ }
     }
     loadMatchesAndRequests();
   }, [user]);
 
-  // No-op: cross-tab sync handled by Supabase now
+  // Poll DB for new messages from students
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(async () => {
+      if (!activeMatchId) return;
+      try {
+        const dbMsgs = await db.getMessages(activeMatchId);
+        setMessages((prev) => ({
+          ...prev,
+          [activeMatchId]: dbMsgs.map((msg) => ({
+            from: msg.from_role as "tutor" | "student",
+            body: msg.body,
+            sentAt: msg.sent_at,
+          })),
+        }));
+      } catch { /* ignore */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [user, activeMatchId]);
 
   function dismissSlot(reqId: string, slot: string) {
     const key = `${reqId}|${slot}`;
@@ -881,14 +900,7 @@ export default function TutorDashboard() {
     const isActive = meetInvites[match.id] ?? false;
     const newActive = !isActive;
     setMeetInvites((prev) => ({ ...prev, [match.id]: newActive }));
-    try {
-      localStorage.setItem(`vt_meet_invite_${match.id}`, JSON.stringify({
-        active: newActive,
-        tutorId: user!.id,
-        gmeetUrl,
-        updatedAt: new Date().toISOString(),
-      }));
-    } catch { /* ignore */ }
+    db.setMeetActive(user!.id, match.id, newActive, gmeetUrl || undefined).catch(() => { /* ignore */ });
     if (newActive && gmeetUrl) {
       window.open(gmeetUrl, "_blank", "noopener,noreferrer");
     }
@@ -901,12 +913,9 @@ export default function TutorDashboard() {
       ...prev,
       [activeMatchId]: [...(prev[activeMatchId] ?? []), newMsg],
     }));
-    try {
-      const key = `vt_messages_${activeMatchId}`;
-      const existing = JSON.parse(localStorage.getItem(key) || "[]");
-      localStorage.setItem(key, JSON.stringify([...existing, newMsg]));
-    } catch { /* ignore */ }
     setMessageInput("");
+    db.createMessage({ match_id: activeMatchId, from_role: "tutor", body: newMsg.body, sent_at: newMsg.sentAt })
+      .catch(() => { /* ignore */ });
   }
 
   return (

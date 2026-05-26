@@ -164,6 +164,8 @@ export interface DbTutorMatch {
   next_session?: string | null;
   proficiency?: string;
   unread_messages?: number;
+  meet_active?: boolean;
+  meet_url?: string;
 }
 
 export async function getTutorMatches(tutorId: string): Promise<DbTutorMatch[]> {
@@ -398,5 +400,49 @@ export async function createModerator(mod: DbModerator): Promise<void> {
 
 export async function deleteModerator(id: string): Promise<void> {
   const { error } = await supabase.from("moderators").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/* ── Messages ────────────────────────────────────────── */
+
+export interface DbMessage {
+  id?: string;
+  match_id: string;
+  from_role: "tutor" | "student";
+  body: string;
+  sent_at?: string;
+}
+
+export async function getMessages(matchId: string): Promise<DbMessage[]> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("match_id", matchId)
+    .order("sent_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function createMessage(message: Omit<DbMessage, "id">): Promise<void> {
+  const { error } = await supabase.from("messages").insert({
+    ...message,
+    sent_at: message.sent_at ?? new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function setMeetActive(
+  tutorId: string,
+  matchId: string,
+  active: boolean,
+  meetUrl?: string
+): Promise<void> {
+  const update: Record<string, unknown> = { meet_active: active };
+  if (meetUrl !== undefined) update.meet_url = meetUrl;
+  const { error } = await supabase
+    .from("tutor_matches")
+    .update(update)
+    .eq("id", matchId)
+    .eq("tutor_id", tutorId);
   if (error) throw error;
 }

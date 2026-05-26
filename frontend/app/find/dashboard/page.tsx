@@ -1109,12 +1109,32 @@ export default function StudentDashboard() {
         }
         setTutorMatches(matches);
 
+        // Load messages from DB
         const msgs: Record<string, MessageEntry[]> = {};
-        matches.forEach((m) => {
-          try { msgs[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
-          catch { msgs[m.id] = []; }
-        });
+        for (const m of matches) {
+          try {
+            const dbMsgs = await db.getMessages(m.id);
+            msgs[m.id] = dbMsgs.map((msg) => ({
+              from: msg.from_role as "tutor" | "student",
+              body: msg.body,
+              sentAt: msg.sent_at,
+            }));
+          } catch { msgs[m.id] = []; }
+        }
         setMessages(msgs);
+
+        // Load meet state from tutor_matches
+        const initialMeet: Record<string, { active: boolean; gmeetUrl: string } | null> = {};
+        for (const req of mine) {
+          if (req.status === "accepted" && req.acceptedByTutorId) {
+            const tMatches = await db.getTutorMatches(req.acceptedByTutorId).catch(() => []);
+            const tm = tMatches.find((m) => m.id === req.id);
+            if (tm) {
+              initialMeet[req.id] = tm.meet_active ? { active: true, gmeetUrl: tm.meet_url ?? "" } : null;
+            }
+          }
+        }
+        setMeetInvites(initialMeet);
       } catch { /* ignore */ }
     }
     loadData();
@@ -1171,36 +1191,39 @@ export default function StudentDashboard() {
         }
         setTutorMatches(matches);
 
-        // Refresh messages for active thread (messages still in localStorage)
-        setMessages((prev) => {
-          const next = { ...prev };
-          matches.forEach((m) => {
-            try {
-              const stored = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
-              next[m.id] = stored;
-            } catch { /* ignore */ }
-          });
-          return next;
-        });
+        // Refresh messages from DB for all matched tutors
+        for (const m of matches) {
+          try {
+            const dbMsgs = await db.getMessages(m.id);
+            const msgList: MessageEntry[] = dbMsgs.map((msg) => ({
+              from: msg.from_role as "tutor" | "student",
+              body: msg.body,
+              sentAt: msg.sent_at,
+            }));
+            setMessages((prev) => ({ ...prev, [m.id]: msgList }));
+          } catch { /* ignore */ }
+        }
 
-        // Poll meet invites (meet invites still in localStorage)
+        // Poll meet state from tutor_matches in DB
+        const meetUpdates: { matchId: string; tutorName: string; active: boolean; gmeetUrl: string }[] = [];
+        for (const m of matches) {
+          try {
+            const tMatches = await db.getTutorMatches(m.tutorId).catch(() => []);
+            const tm = tMatches.find((t) => t.id === m.id);
+            if (tm) {
+              meetUpdates.push({ matchId: m.id, tutorName: m.tutorName, active: tm.meet_active === true, gmeetUrl: tm.meet_url ?? "" });
+            }
+          } catch { /* ignore */ }
+        }
         setMeetInvites((prev) => {
           const next = { ...prev };
-          matches.forEach((m) => {
-            try {
-              const raw = localStorage.getItem(`vt_meet_invite_${m.id}`);
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                const wasActive = prev[m.id]?.active;
-                if (parsed.active && !wasActive) {
-                  setMeetToast({ matchId: m.id, tutorName: m.tutorName });
-                }
-                next[m.id] = { active: parsed.active === true, gmeetUrl: parsed.gmeetUrl ?? "" };
-              } else {
-                next[m.id] = null;
-              }
-            } catch { /* ignore */ }
-          });
+          for (const upd of meetUpdates) {
+            const wasActive = prev[upd.matchId]?.active;
+            if (upd.active && !wasActive) {
+              setMeetToast({ matchId: upd.matchId, tutorName: upd.tutorName });
+            }
+            next[upd.matchId] = upd.active ? { active: true, gmeetUrl: upd.gmeetUrl } : null;
+          }
           return next;
         });
       } catch { /* ignore */ }
@@ -1232,12 +1255,9 @@ export default function StudentDashboard() {
       ...prev,
       [activeTutorId]: [...(prev[activeTutorId] ?? []), newMsg],
     }));
-    try {
-      const key = `vt_messages_${activeTutorId}`;
-      const existing = JSON.parse(localStorage.getItem(key) || "[]");
-      localStorage.setItem(key, JSON.stringify([...existing, newMsg]));
-    } catch { /* ignore */ }
     setMessageInput("");
+    db.createMessage({ match_id: activeTutorId, from_role: "student", body: newMsg.body, sent_at: newMsg.sentAt })
+      .catch(() => { /* ignore */ });
   }
 
   function handleAvatarFileChange(e: React.ChangeEvent<HTMLInputElement>) {

@@ -225,21 +225,21 @@ export default function TutorDashboard() {
   return (
     <div className="min-h-screen bg-[#fef9ee]">
       {/* ── Navbar ── */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0d2535]">
+      <nav className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
           <Link href="/" className="flex items-center">
             <Image
-              src="/voluntutor-logo.png"
+              src="/Company-logo.png"
               alt="VolunTutor"
               width={160}
               height={56}
-              className="h-14 w-auto object-contain"
+              className="h-14 w-auto object-contain mix-blend-multiply"
               priority
             />
           </Link>
 
           <div className="flex items-center gap-4">
-            <span className="hidden text-sm font-medium text-white/80 sm:block">
+            <span className="hidden text-sm font-medium text-gray-800 sm:block">
               Hello, {user.name.split(" ")[0]} 👋
             </span>
             <div className="flex items-center gap-2">

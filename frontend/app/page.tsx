@@ -1,6 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
 import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
-import { NestedSquares } from "@/components/ui/bloom";
 import { ReviewsSection } from "@/components/reviews-section";
 import { AuthRedirect } from "@/components/auth-redirect";
 
@@ -8,6 +8,22 @@ export default function Home() {
   return (
     <>
       <AuthRedirect />
+      {/* ── Navbar ── */}
+      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0d2535]">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
+          <Link href="/" className="flex items-center">
+            <Image src="/voluntutor-logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain" priority />
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/find/auth" className="rounded-full bg-amber-400 px-5 py-2 text-sm font-semibold text-white transition hover:bg-amber-300">
+              Find a Tutor
+            </Link>
+            <Link href="/become" className="rounded-full border border-white/20 px-5 py-2 text-sm font-semibold text-white/80 transition hover:border-white/40 hover:text-white">
+              Become a Tutor
+            </Link>
+          </div>
+        </div>
+      </nav>
       {/* ── Hero ───────────────────────────────────── */}
       <RhythmicRipplesBackground
         backgroundColor="#ffffff"
@@ -16,11 +32,6 @@ export default function Home() {
         rippleSpeed={0.4}
       >
         <div className="relative flex flex-col items-center px-6 text-center">
-
-          {/* NestedSquares bloom — sits behind hero text */}
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <NestedSquares className="bg-transparent opacity-70 w-[680px] h-[680px]" />
-          </div>
 
           {/* Hero content */}
           <div className="relative z-10 flex flex-col items-center">

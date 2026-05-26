@@ -288,8 +288,10 @@ export async function getRequestsByStudentId(studentId: string): Promise<DbReque
 }
 
 export async function createRequest(req: Omit<DbRequest, "submitted_at" | "status">): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { avatar: _avatar, ...rest } = req;
   const { error } = await supabase.from("student_requests").insert({
-    ...req,
+    ...rest,
     status: "pending",
     submitted_at: new Date().toISOString(),
   });

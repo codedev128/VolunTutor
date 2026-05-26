@@ -1,5 +1,4 @@
 import Link from "next/link";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { ReviewsSection } from "@/components/reviews-section";
 import { AuthRedirect } from "@/components/auth-redirect";
 
@@ -8,12 +7,7 @@ export default function Home() {
     <>
       <AuthRedirect />
       {/* ── Hero ───────────────────────────────────── */}
-      <RhythmicRipplesBackground
-        backgroundColor="#ffffff"
-        rippleColor="rgba(247, 184, 1, 0.4)"
-        rippleCount={18}
-        rippleSpeed={0.4}
-      >
+      <div className="flex flex-col items-center px-6 py-24 text-center">
         <div className="relative flex flex-col items-center px-6 text-center">
 
           {/* Hero content */}
@@ -51,7 +45,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      </RhythmicRipplesBackground>
+      </div>
 
       {/* ── Reviews ─────────────────────────────────── */}
       <ReviewsSection />

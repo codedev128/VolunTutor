@@ -160,7 +160,7 @@ type EnrichedTutor = StoredUser & {
 export default function AdminDashboard() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [tab, setTab] = useState<"overview" | "tutors" | "students" | "sessions" | "applications" | "moderators" | "reviews">("overview");
+  const [tab, setTab] = useState<"overview" | "tutors" | "students" | "requests" | "sessions" | "applications" | "moderators" | "reviews">("overview");
   const [users, setUsers] = useState<StoredUser[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
@@ -498,6 +498,7 @@ export default function AdminDashboard() {
             { id: "overview",      label: "Overview" },
             { id: "tutors",        label: `Tutors (${tutors.length})` },
             { id: "students",      label: `Students (${students.length})` },
+            { id: "requests",      label: `Requests (${requests.filter((r) => r.status === "pending").length} pending)` },
             { id: "sessions",      label: `Sessions (${sessions.length})` },
             { id: "applications",  label: `Applications (${applications.filter((a) => a.status === "pending").length} pending)` },
             { id: "moderators",    label: `Moderators (${moderators.length})` },
@@ -711,6 +712,55 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Requests ── */}
+        {tab === "requests" && (
+          <div className="space-y-3">
+            {requests.length === 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 py-16 text-center">
+                <p className="text-slate-500">No student requests yet.</p>
+              </div>
+            )}
+            {requests.filter((r) => !search || r.studentName.toLowerCase().includes(q) || r.subject.toLowerCase().includes(q)).map((r) => {
+              const tutor = tutors.find((t) => t.id === r.acceptedByTutorId);
+              return (
+                <div key={r.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <p className="font-bold text-white">{r.studentName}</p>
+                        <Badge label={r.subject} color="slate" />
+                        <Badge label={GRADE_LABELS[r.gradeLevel] ?? r.gradeLevel} color="slate" />
+                        <Badge
+                          label={r.status}
+                          color={r.status === "accepted" ? "green" : r.status === "pending" ? "amber" : "slate"}
+                        />
+                      </div>
+                      {r.helpMessage && (
+                        <p className="text-sm text-slate-400 mt-1 line-clamp-2">&ldquo;{r.helpMessage}&rdquo;</p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
+                        <span>Submitted {new Date(r.submittedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                        {r.recurrenceWeeks && <span>{r.recurrenceWeeks === 1 ? "One-off" : `${r.recurrenceWeeks} weeks`}</span>}
+                        {r.availabilitySlots.length > 0 && <span>{r.availabilitySlots.length} slot{r.availabilitySlots.length !== 1 ? "s" : ""} offered</span>}
+                        {tutor && <span>Accepted by <span className="text-slate-300 font-medium">{tutor.name}</span></span>}
+                        {r.targetTutorId && !tutor && <span className="text-amber-400">Targeted request</span>}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteRequest(r.id)}
+                      className="flex shrink-0 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 hover:bg-red-500/20 transition">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
                 </div>
               );
             })}

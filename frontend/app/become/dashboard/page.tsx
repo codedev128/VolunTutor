@@ -665,6 +665,7 @@ export default function TutorDashboard() {
         const matching = allRequests.filter((req) => {
           if (req.status !== "pending") return false;
           if (rejected.includes(req.id)) return false;
+          if (req.target_tutor_id && req.target_tutor_id !== user!.id) return false;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ts = subjects.find((s: any) => s.name.toLowerCase() === req.subject.toLowerCase());
           if (!ts) return false;

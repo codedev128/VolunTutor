@@ -12,7 +12,7 @@ export default function Home() {
         {/* Falling pattern background */}
         <div className="absolute inset-0">
           <FallingPattern
-            color="rgba(253, 200, 10, 0.95)"
+            color="rgba(120, 75, 0, 1)"
             backgroundColor="#ffffff"
             duration={150}
             blurIntensity="0.8em"

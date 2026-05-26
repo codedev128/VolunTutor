@@ -61,7 +61,6 @@ function SignUpDialog() {
   const [cvFile, setCvFile]         = useState<File | null>(null);
   const [pendingCvDataUrl, setPendingCvDataUrl] = useState("");
   const [error, setError]           = useState("");
-  const [suggestion, setSuggestion] = useState("");
   const [verifying, setVerifying]   = useState(false);
   const [sending, setSending]       = useState(false);
   const [loading, setLoading]       = useState(false);
@@ -76,16 +75,14 @@ function SignUpDialog() {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  async function handleSignUp(ignoreSuggestion = false) {
+  async function handleSignUp() {
     setError("");
-    if (!ignoreSuggestion) setSuggestion("");
     if (!name.trim() || !email.trim() || !password.trim() || !confirm.trim()) {
       setError("Please fill in all fields."); return;
     }
     if (!cvFile) { setError("Please attach your CV or resume."); return; }
     const emailCheck = validateEmail(email);
     if (!emailCheck.ok) { setError(emailCheck.error!); return; }
-    if (!ignoreSuggestion && emailCheck.suggestion) { setSuggestion(emailCheck.suggestion); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirm) { setError("Passwords do not match."); return; }
     // Check for duplicate application or account
@@ -243,16 +240,6 @@ function SignUpDialog() {
                 </label>
               </div>
             </div>
-            {suggestion && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                Did you mean{" "}
-                <button type="button" className="font-semibold underline hover:no-underline"
-                  onClick={() => { setEmail(suggestion); setSuggestion(""); }}>{suggestion}</button>
-                ?{" "}
-                <button type="button" className="ml-1 text-amber-600 hover:text-amber-800"
-                  onClick={() => { setSuggestion(""); handleSignUp(true); }}>No, keep it</button>
-              </div>
-            )}
             {error && <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</p>}
             <AmberButton onClick={() => handleSignUp()} disabled={verifying || sending}>
               {verifying ? "Verifying email…" : sending ? "Sending code…" : "Continue →"}

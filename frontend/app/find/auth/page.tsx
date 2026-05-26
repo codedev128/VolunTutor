@@ -40,7 +40,6 @@ function SignUpDialog() {
   const [password, setPassword]     = useState("");
   const [confirm, setConfirm]       = useState("");
   const [error, setError]           = useState("");
-  const [suggestion, setSuggestion] = useState("");
   const [verifying, setVerifying]   = useState(false);
   const [sending, setSending]       = useState(false);
   const [loading, setLoading]       = useState(false);
@@ -55,15 +54,13 @@ function SignUpDialog() {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  async function handleSignUp(ignoreSuggestion = false) {
+  async function handleSignUp() {
     setError("");
-    if (!ignoreSuggestion) setSuggestion("");
     if (!name.trim() || !email.trim() || !password.trim() || !confirm.trim()) {
       setError("Please fill in all fields."); return;
     }
     const emailCheck = validateEmail(email);
     if (!emailCheck.ok) { setError(emailCheck.error!); return; }
-    if (!ignoreSuggestion && emailCheck.suggestion) { setSuggestion(emailCheck.suggestion); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirm) { setError("Passwords do not match."); return; }
     setVerifying(true);
@@ -139,20 +136,6 @@ function SignUpDialog() {
                 <Input id={`${id}-confirm`} placeholder="Repeat your password" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSignUp()} />
               </div>
             </div>
-            {suggestion && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                Did you mean{" "}
-                <button type="button" className="font-semibold underline hover:no-underline"
-                  onClick={() => { setEmail(suggestion); setSuggestion(""); }}>
-                  {suggestion}
-                </button>
-                ?{" "}
-                <button type="button" className="ml-1 text-amber-600 hover:text-amber-800"
-                  onClick={() => { setSuggestion(""); handleSignUp(true); }}>
-                  No, keep it
-                </button>
-              </div>
-            )}
             {error && <p className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</p>}
             <button type="button" onClick={() => handleSignUp()} disabled={verifying || sending}
               className="w-full rounded-lg bg-amber-400 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-300 active:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed">

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { ReviewsSection } from "@/components/reviews-section";
 import { AuthRedirect } from "@/components/auth-redirect";
@@ -8,24 +7,6 @@ export default function Home() {
   return (
     <>
       <AuthRedirect />
-
-      {/* ── Navbar ─────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
-          <Link href="/" className="flex items-center">
-            <Image src="/Company-logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain mix-blend-multiply" priority />
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/find/auth" className="rounded-full border border-gray-900/20 px-4 py-2 text-sm font-semibold text-gray-800 transition hover:bg-black/5">
-              Find a tutor
-            </Link>
-            <Link href="/become" className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700">
-              Become a tutor
-            </Link>
-          </div>
-        </div>
-      </nav>
-
       {/* ── Hero ───────────────────────────────────── */}
       <RhythmicRipplesBackground
         backgroundColor="#ffffff"

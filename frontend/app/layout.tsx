@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EduConnect",
-  description: "Learn together, grow together",
+  title: "VolunTutor",
+  description: "Free, personalised online tutoring for visually impaired students.",
 };
 
 export default function RootLayout({

@@ -229,7 +229,7 @@ export default function TutorDashboard() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
           <Link href="/" className="flex items-center">
             <Image
-              src="/Company-logo.png"
+              src="/Guide_app_logo.png"
               alt="VolunTutor"
               width={160}
               height={56}

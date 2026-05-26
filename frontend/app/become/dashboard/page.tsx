@@ -12,6 +12,7 @@ type MatchStatus = "ACTIVE" | "AWAITING_FIRST_SESSION" | "PAUSED";
 
 interface StudentRequest {
   id: string;
+  studentId?: string;
   studentName: string;
   avatar: string;
   subject: string;
@@ -306,37 +307,6 @@ function DashboardTimetable({
   );
 }
 
-/* ── Mock data ───────────────────────────────────────── */
-const ACTIVE_MATCHES: ActiveMatch[] = [
-  {
-    id: "m1", studentName: "Aisha Patel", avatar: "AP", subject: "Mathematics",
-    gradeLevel: "GCSE", proficiency: "INTERMEDIATE",
-    helpMessage: "I need help understanding quadratic equations and algebraic fractions. My mocks are in 8 weeks.",
-    matchedAt: "3 days ago", sessionCount: 14, nextSession: "Mon 4:00 PM",
-    status: "ACTIVE", unreadMessages: 2,
-  },
-  {
-    id: "m2", studentName: "Daniel Osei", avatar: "DO", subject: "Physics",
-    gradeLevel: "A-Level", proficiency: "INTERMEDIATE",
-    helpMessage: "Struggling with electromagnetism and quantum concepts. Need someone to explain the intuition.",
-    matchedAt: "1 week ago", sessionCount: 8, nextSession: "Tue 5:30 PM",
-    status: "ACTIVE", unreadMessages: 0,
-  },
-  {
-    id: "m3", studentName: "Mei Lin", avatar: "ML", subject: "Chemistry",
-    gradeLevel: "GCSE", proficiency: "BEGINNER",
-    helpMessage: "The periodic table and chemical bonding are confusing. I want to understand reactions, not just memorise.",
-    matchedAt: "2 weeks ago", sessionCount: 22, nextSession: "Wed 4:00 PM",
-    status: "ACTIVE", unreadMessages: 0,
-  },
-  {
-    id: "m4", studentName: "Carlos Rivera", avatar: "CR", subject: "Mathematics",
-    gradeLevel: "Middle School", proficiency: "BEGINNER",
-    helpMessage: "I keep getting confused with fractions and negative numbers. Need patient, step-by-step help.",
-    matchedAt: "2 days ago", sessionCount: 0, nextSession: null,
-    status: "AWAITING_FIRST_SESSION", unreadMessages: 1,
-  },
-];
 
 const EDUCATION_LABELS: Record<string, string> = {
   high_school:  "High School",
@@ -605,7 +575,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 export default function TutorDashboard() {
   const router = useRouter();
   const { user, isLoading, signOut } = useAuth();
-  const [matches, setMatches] = useState<ActiveMatch[]>(ACTIVE_MATCHES);
+  const [matches, setMatches] = useState<ActiveMatch[]>([]);
   const [profileSubjects, setProfileSubjects] = useState<Subject[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [pendingRequests, setPendingRequests] = useState<StudentRequest[]>([]);
@@ -666,6 +636,7 @@ export default function TutorDashboard() {
         // Map db fields to component interface
         const mappedRequests: StudentRequest[] = matching.map((req) => ({
           id: req.id,
+          studentId: req.student_id,
           studentName: req.student_name,
           avatar: req.avatar ?? req.student_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
           subject: req.subject,
@@ -696,10 +667,7 @@ export default function TutorDashboard() {
             status: (m.status ?? "ACTIVE") as MatchStatus,
             unreadMessages: m.unread_messages ?? 0,
           }));
-          setMatches((prev) => {
-            const ids = new Set(prev.map((m) => m.id));
-            return [...prev, ...mappedMatches.filter((m) => !ids.has(m.id))];
-          });
+          setMatches(mappedMatches);
 
           // Load messages from DB for each match
           const msgsMap: Record<string, { from: "tutor" | "student"; body: string; sentAt?: string }[]> = {};
@@ -794,7 +762,7 @@ export default function TutorDashboard() {
       db.createMatch({
         id: newMatch.id,
         tutor_id: user!.id,
-        student_id: undefined,
+        student_id: req.studentId,
         subject: newMatch.subject,
         grade_level: newMatch.gradeLevel,
         booked_slots: newMatch.bookedSlots ?? [],

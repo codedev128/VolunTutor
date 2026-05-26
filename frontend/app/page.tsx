@@ -8,22 +8,24 @@ export default function Home() {
   return (
     <>
       <AuthRedirect />
-      {/* ── Navbar ── */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0d2535]">
+
+      {/* ── Navbar ─────────────────────────────────── */}
+      <nav className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
           <Link href="/" className="flex items-center">
-            <Image src="/voluntutor-logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain" priority />
+            <Image src="/Company-logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain mix-blend-multiply" priority />
           </Link>
           <div className="flex items-center gap-3">
-            <Link href="/find/auth" className="rounded-full bg-amber-400 px-5 py-2 text-sm font-semibold text-white transition hover:bg-amber-300">
-              Find a Tutor
+            <Link href="/find/auth" className="rounded-full border border-gray-900/20 px-4 py-2 text-sm font-semibold text-gray-800 transition hover:bg-black/5">
+              Find a tutor
             </Link>
-            <Link href="/become" className="rounded-full border border-white/20 px-5 py-2 text-sm font-semibold text-white/80 transition hover:border-white/40 hover:text-white">
-              Become a Tutor
+            <Link href="/become" className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-700">
+              Become a tutor
             </Link>
           </div>
         </div>
       </nav>
+
       {/* ── Hero ───────────────────────────────────── */}
       <RhythmicRipplesBackground
         backgroundColor="#ffffff"

@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { ReviewsSection } from "@/components/reviews-section";
 import { AuthRedirect } from "@/components/auth-redirect";
+import { DottedSurface } from "@/components/ui/dotted-surface";
 
 export default function Home() {
   return (
     <>
       <AuthRedirect />
       {/* ── Hero ───────────────────────────────────── */}
-      <div className="relative flex h-screen w-full items-center justify-center bg-white px-6">
-        <div className="flex flex-col items-center text-center">
+      <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-white px-6">
+        <DottedSurface />
+        <div className="relative z-10 flex flex-col items-center text-center">
           <h1 className="max-w-3xl text-5xl font-bold leading-tight tracking-tight text-gray-900 sm:text-6xl lg:text-7xl">
             Learning with{" "}
             <span className="italic text-amber-500">no limits.</span>

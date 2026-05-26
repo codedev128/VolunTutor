@@ -1,36 +1,39 @@
 import Link from "next/link";
-import ShaderBackground from "@/components/ui/shader-background";
 import { ReviewsSection } from "@/components/reviews-section";
 import { AuthRedirect } from "@/components/auth-redirect";
+import { NestedSquares } from "@/components/ui/nested-squares";
 
 export default function Home() {
   return (
     <>
       <AuthRedirect />
       {/* ── Hero ───────────────────────────────────── */}
-      <div className="relative h-screen w-full overflow-hidden flex items-center justify-center px-6">
-        <ShaderBackground />
+      <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-white px-6">
+        {/* Nested squares background animation */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-25">
+          <NestedSquares />
+        </div>
 
         <div className="relative z-10 flex flex-col items-center text-center">
-          <h1 className="max-w-3xl text-5xl font-bold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
+          <h1 className="max-w-3xl text-5xl font-bold leading-tight tracking-tight text-gray-900 sm:text-6xl lg:text-7xl">
             Learning with{" "}
-            <span className="italic text-amber-400">no limits.</span>
+            <span className="italic text-amber-500">no limits.</span>
           </h1>
 
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-gray-300">
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-gray-600">
             Take your first step with VolunTutor towards free, personalised online tutoring for visually impaired students.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link
               href="/find/auth"
-              className="rounded-full bg-amber-400 px-8 py-3 text-sm font-semibold text-gray-900 shadow-md transition hover:-translate-y-0.5 hover:bg-amber-300 active:translate-y-0"
+              className="rounded-full bg-gray-900 px-8 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:bg-gray-700 active:translate-y-0"
             >
               Find a VolunTutor →
             </Link>
             <Link
               href="/become"
-              className="rounded-full border border-white/25 px-8 py-3 text-sm font-semibold text-white transition hover:border-white/50 hover:bg-white/10"
+              className="rounded-full border border-gray-900/20 px-8 py-3 text-sm font-semibold text-gray-800 transition hover:border-gray-900/40 hover:bg-gray-900/5"
             >
               Become a VolunTutor
             </Link>
@@ -38,8 +41,8 @@ export default function Home() {
 
           {/* Scroll indicator */}
           <div className="mt-16 flex flex-col items-center gap-1.5 opacity-40">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-300">Reviews</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-bounce text-gray-300">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Reviews</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-bounce text-gray-400">
               <path d="M12 5v14M5 12l7 7 7-7"/>
             </svg>
           </div>

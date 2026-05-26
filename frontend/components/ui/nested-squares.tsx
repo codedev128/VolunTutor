@@ -18,16 +18,10 @@ export function NestedSquares({ className }: NestedSquaresProps = {}) {
         return (
           <motion.div
             key={index}
-            className="absolute border-2 border-transparent"
+            className="absolute border-2"
             style={{
               padding: `${padding}px`,
-              borderImage: `linear-gradient(45deg,
-                rgb(247, 184, 1),
-                rgb(251, 191, 36),
-                rgb(253, 230, 138),
-                rgb(245, 158, 11),
-                rgb(217, 119, 6)
-              ) 1`,
+              borderColor: "rgb(247, 184, 1)",
             }}
             initial={{ scale: 0, rotate: 0 }}
             animate={{ scale: 2, rotate: 180 }}

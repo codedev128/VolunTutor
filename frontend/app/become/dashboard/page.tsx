@@ -669,17 +669,23 @@ export default function TutorDashboard() {
           }));
           setMatches(mappedMatches);
 
-          // Load messages from DB for each match
+          // Load messages — DB primary, localStorage fallback
           const msgsMap: Record<string, { from: "tutor" | "student"; body: string; sentAt?: string }[]> = {};
           for (const m of mappedMatches) {
             try {
               const dbMsgs = await db.getMessages(m.id);
-              msgsMap[m.id] = dbMsgs.map((msg) => ({
-                from: msg.from_role as "tutor" | "student",
-                body: msg.body,
-                sentAt: msg.sent_at,
-              }));
-            } catch { msgsMap[m.id] = []; }
+              if (dbMsgs.length > 0) {
+                msgsMap[m.id] = dbMsgs.map((msg) => ({
+                  from: msg.from_role as "tutor" | "student",
+                  body: msg.body,
+                  sentAt: msg.sent_at,
+                }));
+              } else {
+                msgsMap[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
+              }
+            } catch {
+              msgsMap[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
+            }
           }
           setMessages(msgsMap);
 
@@ -693,22 +699,34 @@ export default function TutorDashboard() {
     loadMatchesAndRequests();
   }, [user]);
 
-  // Poll DB for new messages from students
+  // Poll for new messages from students — DB primary, localStorage fallback
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(async () => {
       if (!activeMatchId) return;
       try {
         const dbMsgs = await db.getMessages(activeMatchId);
+        if (dbMsgs.length > 0) {
+          setMessages((prev) => ({
+            ...prev,
+            [activeMatchId]: dbMsgs.map((msg) => ({
+              from: msg.from_role as "tutor" | "student",
+              body: msg.body,
+              sentAt: msg.sent_at,
+            })),
+          }));
+        } else {
+          setMessages((prev) => ({
+            ...prev,
+            [activeMatchId]: JSON.parse(localStorage.getItem(`vt_messages_${activeMatchId}`) || "[]"),
+          }));
+        }
+      } catch {
         setMessages((prev) => ({
           ...prev,
-          [activeMatchId]: dbMsgs.map((msg) => ({
-            from: msg.from_role as "tutor" | "student",
-            body: msg.body,
-            sentAt: msg.sent_at,
-          })),
+          [activeMatchId]: JSON.parse(localStorage.getItem(`vt_messages_${activeMatchId}`) || "[]"),
         }));
-      } catch { /* ignore */ }
+      }
     }, 3000);
     return () => clearInterval(interval);
   }, [user, activeMatchId]);
@@ -882,8 +900,15 @@ export default function TutorDashboard() {
       [activeMatchId]: [...(prev[activeMatchId] ?? []), newMsg],
     }));
     setMessageInput("");
+    // Persist to localStorage immediately (guarantees survival across refresh)
+    try {
+      const key = `vt_messages_${activeMatchId}`;
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(key, JSON.stringify([...existing, newMsg]));
+    } catch { /* ignore */ }
+    // Also sync to DB
     db.createMessage({ match_id: activeMatchId, from_role: "tutor", body: newMsg.body, sent_at: newMsg.sentAt })
-      .catch(() => { /* ignore */ });
+      .catch((e) => console.error("Message DB save failed:", e));
   }
 
   return (

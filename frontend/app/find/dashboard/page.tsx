@@ -1109,17 +1109,23 @@ export default function StudentDashboard() {
         }
         setTutorMatches(matches);
 
-        // Load messages from DB
+        // Load messages — DB primary, localStorage fallback
         const msgs: Record<string, MessageEntry[]> = {};
         for (const m of matches) {
           try {
             const dbMsgs = await db.getMessages(m.id);
-            msgs[m.id] = dbMsgs.map((msg) => ({
-              from: msg.from_role as "tutor" | "student",
-              body: msg.body,
-              sentAt: msg.sent_at,
-            }));
-          } catch { msgs[m.id] = []; }
+            if (dbMsgs.length > 0) {
+              msgs[m.id] = dbMsgs.map((msg) => ({
+                from: msg.from_role as "tutor" | "student",
+                body: msg.body,
+                sentAt: msg.sent_at,
+              }));
+            } else {
+              msgs[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
+            }
+          } catch {
+            msgs[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
+          }
         }
         setMessages(msgs);
 
@@ -1191,17 +1197,25 @@ export default function StudentDashboard() {
         }
         setTutorMatches(matches);
 
-        // Refresh messages from DB for all matched tutors
+        // Refresh messages — DB primary, localStorage fallback
         for (const m of matches) {
           try {
             const dbMsgs = await db.getMessages(m.id);
-            const msgList: MessageEntry[] = dbMsgs.map((msg) => ({
-              from: msg.from_role as "tutor" | "student",
-              body: msg.body,
-              sentAt: msg.sent_at,
-            }));
-            setMessages((prev) => ({ ...prev, [m.id]: msgList }));
-          } catch { /* ignore */ }
+            if (dbMsgs.length > 0) {
+              const msgList: MessageEntry[] = dbMsgs.map((msg) => ({
+                from: msg.from_role as "tutor" | "student",
+                body: msg.body,
+                sentAt: msg.sent_at,
+              }));
+              setMessages((prev) => ({ ...prev, [m.id]: msgList }));
+            } else {
+              const local: MessageEntry[] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
+              setMessages((prev) => ({ ...prev, [m.id]: local }));
+            }
+          } catch {
+            const local: MessageEntry[] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]");
+            setMessages((prev) => ({ ...prev, [m.id]: local }));
+          }
         }
 
         // Poll meet state from tutor_matches in DB
@@ -1256,8 +1270,15 @@ export default function StudentDashboard() {
       [activeTutorId]: [...(prev[activeTutorId] ?? []), newMsg],
     }));
     setMessageInput("");
+    // Persist to localStorage immediately (guarantees survival across refresh)
+    try {
+      const key = `vt_messages_${activeTutorId}`;
+      const existing: MessageEntry[] = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(key, JSON.stringify([...existing, newMsg]));
+    } catch { /* ignore */ }
+    // Also sync to DB
     db.createMessage({ match_id: activeTutorId, from_role: "student", body: newMsg.body, sent_at: newMsg.sentAt })
-      .catch(() => { /* ignore */ });
+      .catch((e) => console.error("Message DB save failed:", e));
   }
 
   function handleAvatarFileChange(e: React.ChangeEvent<HTMLInputElement>) {

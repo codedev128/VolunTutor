@@ -25,12 +25,12 @@ export default function Home() {
           {/* Hero content */}
           <div className="relative z-10 flex flex-col items-center">
             <h1 className="max-w-3xl text-5xl font-bold leading-tight tracking-tight text-gray-900 sm:text-6xl lg:text-7xl">
-              Every student deserves a{" "}
-              <span className="italic text-amber-500">great teacher.</span>
+              Learning with{" "}
+              <span className="italic text-amber-500">no limits.</span>
             </h1>
 
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-gray-600">
-              At VolunTutor, we believe that vision does not define potential. We connect visually impaired students with dedicated VolunTutors for personalised, one-on-one online learning — at no cost. Together, we make education accessible, inclusive, and limitless.
+              Take your first step with VolunTutor towards free, personalised online tutoring for visually impaired students.
             </p>
 
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">

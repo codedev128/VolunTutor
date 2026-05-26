@@ -48,11 +48,13 @@ export async function sendOTP(
     await emailjs.send(
       serviceId,
       templateId,
-      { to_email: toEmail, to_name: toName, otp, expires_in: "5 minutes" },
-      publicKey
+      { email: toEmail, to_name: toName, passcode: otp, time: "5 minutes" },
+      { publicKey }
     );
     return { ok: true };
-  } catch {
-    return { ok: false, error: "Failed to send verification email. Please try again." };
+  } catch (err) {
+    console.error("EmailJS error:", JSON.stringify(err), err);
+    const msg = (err as { text?: string; status?: number })?.text ?? "Failed to send verification email. Please try again.";
+    return { ok: false, error: msg };
   }
 }

@@ -166,6 +166,7 @@ export interface DbTutorMatch {
   unread_messages?: number;
   meet_active?: boolean;
   meet_url?: string;
+  messages?: DbMessage[];
 }
 
 export async function getTutorMatches(tutorId: string): Promise<DbTutorMatch[]> {
@@ -403,32 +404,47 @@ export async function deleteModerator(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/* ── Messages ────────────────────────────────────────── */
+/* ── Messages (stored as JSONB in tutor_matches) ─────── */
 
 export interface DbMessage {
-  id?: string;
+  id: string;
   match_id: string;
   from_role: "tutor" | "student";
   body: string;
-  sent_at?: string;
+  sent_at: string;
 }
 
 export async function getMessages(matchId: string): Promise<DbMessage[]> {
   const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("match_id", matchId)
-    .order("sent_at", { ascending: true });
+    .from("tutor_matches")
+    .select("messages")
+    .eq("id", matchId)
+    .maybeSingle();
   if (error) throw error;
-  return data ?? [];
+  const msgs = (data?.messages ?? []) as DbMessage[];
+  return msgs.sort((a, b) => a.sent_at.localeCompare(b.sent_at));
 }
 
 export async function createMessage(message: Omit<DbMessage, "id">): Promise<void> {
-  const { error } = await supabase.from("messages").insert({
-    ...message,
+  const { data, error: readErr } = await supabase
+    .from("tutor_matches")
+    .select("messages")
+    .eq("id", message.match_id)
+    .maybeSingle();
+  if (readErr) throw readErr;
+  const existing: DbMessage[] = (data?.messages ?? []) as DbMessage[];
+  const newMsg: DbMessage = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    match_id: message.match_id,
+    from_role: message.from_role,
+    body: message.body,
     sent_at: message.sent_at ?? new Date().toISOString(),
-  });
-  if (error) throw error;
+  };
+  const { error: writeErr } = await supabase
+    .from("tutor_matches")
+    .update({ messages: [...existing, newMsg] })
+    .eq("id", message.match_id);
+  if (writeErr) throw writeErr;
 }
 
 export async function setMeetActive(

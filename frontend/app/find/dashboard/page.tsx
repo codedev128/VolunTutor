@@ -1277,7 +1277,7 @@ export default function StudentDashboard() {
       localStorage.setItem(key, JSON.stringify([...existing, newMsg]));
     } catch { /* ignore */ }
     // Also sync to DB
-    db.createMessage({ match_id: activeTutorId, from_role: "student", body: newMsg.body, sent_at: newMsg.sentAt })
+    db.createMessage({ match_id: activeTutorId, from_role: "student", body: newMsg.body, sent_at: newMsg.sentAt ?? new Date().toISOString() })
       .catch((e) => console.error("Message DB save failed:", e));
   }
 

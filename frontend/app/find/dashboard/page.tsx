@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/context/auth-context";
+import * as db from "@/lib/db";
 
 /* ── Types ───────────────────────────────────────────── */
 type MatchStatus = "ACTIVE" | "AWAITING_FIRST_SESSION" | "PAUSED";
@@ -373,8 +374,23 @@ function TutorReviewsModal({
   reviewCount: number;
   onClose: () => void;
 }) {
-  const reviews: GlobalReview[] = JSON.parse(localStorage.getItem("vt_reviews") || "[]")
-    .filter((r: GlobalReview) => r.tutorId === tutorId);
+  const [reviews, setReviews] = useState<GlobalReview[]>([]);
+  useEffect(() => {
+    db.getReviews().then((all) => {
+      setReviews(
+        all
+          .filter((r) => r.tutor_id === tutorId)
+          .map((r) => ({
+            matchId: r.id,
+            tutorId: r.tutor_id,
+            name: r.reviewer_name ?? r.student_name ?? "Anonymous",
+            rating: r.rating,
+            message: r.text ?? r.comment ?? "",
+            createdAt: r.created_at ?? new Date().toISOString(),
+          }))
+      );
+    }).catch(() => setReviews([]));
+  }, [tutorId]);
 
   const breakdown = [5, 4, 3, 2, 1].map((star) => ({
     star,
@@ -506,41 +522,37 @@ function SearchVolunTutor() {
   const [viewReviews, setViewReviews] = useState<{ tutorId: string; tutorName: string; avgRating: number | null; reviewCount: number } | null>(null);
 
   useEffect(() => {
-    try {
-      const allUsers: Array<{ id: string; name: string; role: string }> =
-        JSON.parse(localStorage.getItem("vt_users") || "[]");
-      const listings: TutorListing[] = allUsers
-        .filter((u) => u.role === "tutor")
-        .map((u) => {
-          const profile = JSON.parse(
-            localStorage.getItem(`vt_tutor_profile_${u.id}`) || '{"subjects":[]}'
-          );
-          const matches: Array<{ bookedSlots?: string[] }> = JSON.parse(
-            localStorage.getItem(`vt_tutor_matches_${u.id}`) || "[]"
-          );
-          const bookedSlotCount = new Set(
-            matches.flatMap((m) => m.bookedSlots ?? [])
-          ).size;
-          const ratings: Array<{ rating: number }> = JSON.parse(
-            localStorage.getItem(`vt_tutor_ratings_${u.id}`) || "[]"
-          );
-          const reviewCount = ratings.length;
-          const avgRating = reviewCount > 0
-            ? Math.round((ratings.reduce((s, r) => s + r.rating, 0) / reviewCount) * 10) / 10
-            : null;
-          return {
-            id: u.id,
-            name: u.name,
-            initials: u.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase(),
-            subjects: profile.subjects ?? [],
-            bookedSlotCount,
-            avgRating,
-            reviewCount,
-          };
-        })
-        .filter((t) => t.subjects.length > 0);
-      setTutors(listings);
-    } catch { /* ignore */ }
+    async function loadTutors() {
+      try {
+        const allUsers = await db.getUsers();
+        const tutorUsers = allUsers.filter((u) => u.role === "tutor");
+        const listings: TutorListing[] = await Promise.all(
+          tutorUsers.map(async (u) => {
+            const profile = await db.getTutorProfile(u.id).catch(() => null);
+            const matches = await db.getTutorMatches(u.id).catch(() => []);
+            const bookedSlotCount = new Set(
+              matches.flatMap((m) => m.booked_slots ?? [])
+            ).size;
+            const ratings = await db.getTutorRatings(u.id).catch(() => []);
+            const reviewCount = ratings.length;
+            const avgRating = reviewCount > 0
+              ? Math.round((ratings.reduce((s, r) => s + r.rating, 0) / reviewCount) * 10) / 10
+              : null;
+            return {
+              id: u.id,
+              name: u.name,
+              initials: u.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase(),
+              subjects: profile?.subjects ?? [],
+              bookedSlotCount,
+              avgRating,
+              reviewCount,
+            };
+          })
+        );
+        setTutors(listings.filter((t) => t.subjects.length > 0));
+      } catch { /* ignore */ }
+    }
+    loadTutors();
   }, []);
 
   const filtered = tutors.filter((t) => {
@@ -1049,66 +1061,31 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    try {
-      const allReqs: MyRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-      const mine = allReqs.filter((r) => r.studentId === user.id);
-      setMyRequests(mine);
-
-      const matches: TutorMatch[] = [];
-      const allUsers: { id: string; name: string }[] = JSON.parse(localStorage.getItem("vt_users") || "[]");
-      for (const req of mine) {
-        if (req.status === "accepted" && req.acceptedByTutorId) {
-          const tutorMatchList = JSON.parse(localStorage.getItem(`vt_tutor_matches_${req.acceptedByTutorId}`) || "[]");
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const match = tutorMatchList.find((m: any) => m.id === req.id);
-          if (match) {
-            const tutor = allUsers.find((u) => u.id === req.acceptedByTutorId);
-            const tutorName = tutor?.name ?? "Your Tutor";
-            matches.push({
-              id: match.id,
-              tutorId: req.acceptedByTutorId,
-              tutorName,
-              tutorAvatar: tutorName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase(),
-              subject: match.subject ?? req.subject,
-              gradeLevel: match.gradeLevel ?? req.gradeLevel,
-              helpMessage: req.helpMessage,
-              matchedAt: match.matchedAt ?? "recently",
-              sessionCount: match.sessionCount ?? 0,
-              nextSession: match.nextSession ?? null,
-              bookedSlots: match.bookedSlots ?? [],
-              status: match.status ?? "ACTIVE",
-              unreadMessages: 0,
-            });
-          }
-        }
-      }
-      setTutorMatches(matches);
-
-      const msgs: Record<string, MessageEntry[]> = {};
-      matches.forEach((m) => {
-        try { msgs[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
-        catch { msgs[m.id] = []; }
-      });
-      setMessages(msgs);
-    } catch { /* ignore */ }
-  }, [user]);
-
-  // Poll for new data (tutor may accept while page is open)
-  useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
+    async function loadData() {
       try {
-        const allReqs: MyRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-        const mine = allReqs.filter((r) => r.studentId === user.id);
+        const allReqs = await db.getRequestsByStudentId(user!.id);
+        const mine: MyRequest[] = allReqs.map((r) => ({
+          id: r.id,
+          studentName: r.student_name,
+          avatar: r.avatar ?? r.student_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
+          subject: r.subject,
+          gradeLevel: r.grade_level,
+          helpMessage: r.help_message ?? "",
+          availabilitySlots: r.availability_slots ?? [],
+          recurrenceWeeks: r.recurrence_weeks,
+          submittedAt: r.submitted_at,
+          status: r.status as MyRequest["status"],
+          studentId: r.student_id,
+          acceptedByTutorId: r.accepted_by_tutor_id,
+        }));
         setMyRequests(mine);
 
-        const allUsers: { id: string; name: string }[] = JSON.parse(localStorage.getItem("vt_users") || "[]");
+        const allUsers = await db.getUsers();
         const matches: TutorMatch[] = [];
         for (const req of mine) {
           if (req.status === "accepted" && req.acceptedByTutorId) {
-            const tutorMatchList = JSON.parse(localStorage.getItem(`vt_tutor_matches_${req.acceptedByTutorId}`) || "[]");
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const match = tutorMatchList.find((m: any) => m.id === req.id);
+            const tutorMatchList = await db.getTutorMatches(req.acceptedByTutorId).catch(() => []);
+            const match = tutorMatchList.find((m) => m.id === req.id);
             if (match) {
               const tutor = allUsers.find((u) => u.id === req.acceptedByTutorId);
               const tutorName = tutor?.name ?? "Your Tutor";
@@ -1118,13 +1095,13 @@ export default function StudentDashboard() {
                 tutorName,
                 tutorAvatar: tutorName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase(),
                 subject: match.subject ?? req.subject,
-                gradeLevel: match.gradeLevel ?? req.gradeLevel,
+                gradeLevel: match.grade_level ?? req.gradeLevel,
                 helpMessage: req.helpMessage,
-                matchedAt: match.matchedAt ?? "recently",
-                sessionCount: match.sessionCount ?? 0,
-                nextSession: match.nextSession ?? null,
-                bookedSlots: match.bookedSlots ?? [],
-                status: match.status ?? "ACTIVE",
+                matchedAt: match.matched_at ?? "recently",
+                sessionCount: match.session_count ?? 0,
+                nextSession: match.next_session ?? null,
+                bookedSlots: match.booked_slots ?? [],
+                status: (match.status ?? "ACTIVE") as MatchStatus,
                 unreadMessages: 0,
               });
             }
@@ -1132,7 +1109,69 @@ export default function StudentDashboard() {
         }
         setTutorMatches(matches);
 
-        // Refresh messages for active thread
+        const msgs: Record<string, MessageEntry[]> = {};
+        matches.forEach((m) => {
+          try { msgs[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
+          catch { msgs[m.id] = []; }
+        });
+        setMessages(msgs);
+      } catch { /* ignore */ }
+    }
+    loadData();
+  }, [user]);
+
+  // Poll for new data (tutor may accept while page is open)
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(async () => {
+      try {
+        const allReqs = await db.getRequestsByStudentId(user.id);
+        const mine: MyRequest[] = allReqs.map((r) => ({
+          id: r.id,
+          studentName: r.student_name,
+          avatar: r.avatar ?? r.student_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
+          subject: r.subject,
+          gradeLevel: r.grade_level,
+          helpMessage: r.help_message ?? "",
+          availabilitySlots: r.availability_slots ?? [],
+          recurrenceWeeks: r.recurrence_weeks,
+          submittedAt: r.submitted_at,
+          status: r.status as MyRequest["status"],
+          studentId: r.student_id,
+          acceptedByTutorId: r.accepted_by_tutor_id,
+        }));
+        setMyRequests(mine);
+
+        const allUsers = await db.getUsers();
+        const matches: TutorMatch[] = [];
+        for (const req of mine) {
+          if (req.status === "accepted" && req.acceptedByTutorId) {
+            const tutorMatchList = await db.getTutorMatches(req.acceptedByTutorId).catch(() => []);
+            const match = tutorMatchList.find((m) => m.id === req.id);
+            if (match) {
+              const tutor = allUsers.find((u) => u.id === req.acceptedByTutorId);
+              const tutorName = tutor?.name ?? "Your Tutor";
+              matches.push({
+                id: match.id,
+                tutorId: req.acceptedByTutorId,
+                tutorName,
+                tutorAvatar: tutorName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase(),
+                subject: match.subject ?? req.subject,
+                gradeLevel: match.grade_level ?? req.gradeLevel,
+                helpMessage: req.helpMessage,
+                matchedAt: match.matched_at ?? "recently",
+                sessionCount: match.session_count ?? 0,
+                nextSession: match.next_session ?? null,
+                bookedSlots: match.booked_slots ?? [],
+                status: (match.status ?? "ACTIVE") as MatchStatus,
+                unreadMessages: 0,
+              });
+            }
+          }
+        }
+        setTutorMatches(matches);
+
+        // Refresh messages for active thread (messages still in localStorage)
         setMessages((prev) => {
           const next = { ...prev };
           matches.forEach((m) => {
@@ -1144,7 +1183,7 @@ export default function StudentDashboard() {
           return next;
         });
 
-        // Poll meet invites
+        // Poll meet invites (meet invites still in localStorage)
         setMeetInvites((prev) => {
           const next = { ...prev };
           matches.forEach((m) => {
@@ -1182,12 +1221,8 @@ export default function StudentDashboard() {
   }, [meetToast]);
 
   const cancelRequest = useCallback((reqId: string) => {
-    try {
-      const allReqs: MyRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-      const updated = allReqs.map((r) => r.id === reqId ? { ...r, status: "cancelled" as const } : r);
-      localStorage.setItem("vt_student_requests", JSON.stringify(updated));
-      setMyRequests((prev) => prev.map((r) => r.id === reqId ? { ...r, status: "cancelled" } : r));
-    } catch { /* ignore */ }
+    db.updateRequestStatus(reqId, "cancelled").catch(() => { /* ignore */ });
+    setMyRequests((prev) => prev.map((r) => r.id === reqId ? { ...r, status: "cancelled" as const } : r));
   }, []);
 
   function sendMessage() {
@@ -1227,33 +1262,28 @@ export default function StudentDashboard() {
     if (!user || !reviewTarget) return;
     const updated = { ...savedReviews, [reviewTarget.matchId]: { rating, body } };
     setSavedReviews(updated);
-    try {
-      // Persist per-student review map
-      localStorage.setItem(`vt_student_reviews_${user.id}`, JSON.stringify(updated));
-      // Write/update per-tutor rating list so Search tab can aggregate them
-      const tutorRatingsKey = `vt_tutor_ratings_${reviewTarget.tutorId}`;
-      const tutorRatings: Array<{ matchId: string; studentId: string; rating: number; body: string }> =
-        JSON.parse(localStorage.getItem(tutorRatingsKey) || "[]");
-      const idx = tutorRatings.findIndex((r) => r.matchId === reviewTarget.matchId);
-      const entry = { matchId: reviewTarget.matchId, studentId: user.id, rating, body };
-      if (idx >= 0) tutorRatings[idx] = entry; else tutorRatings.push(entry);
-      localStorage.setItem(tutorRatingsKey, JSON.stringify(tutorRatings));
-      // Also push into the global reviews feed so it appears on the landing page
-      const globalReviews = JSON.parse(localStorage.getItem("vt_reviews") || "[]");
-      const gIdx = globalReviews.findIndex((r: { matchId?: string }) => r.matchId === reviewTarget.matchId);
-      const gEntry = {
-        id: reviewTarget.matchId,
-        matchId: reviewTarget.matchId,
-        tutorId: reviewTarget.tutorId,
-        name: user.name,
-        role: "student",
-        rating,
-        message: body || `Great tutor for ${reviewTarget.subject}!`,
-        createdAt: new Date().toISOString(),
-      };
-      if (gIdx >= 0) globalReviews[gIdx] = gEntry; else globalReviews.push(gEntry);
-      localStorage.setItem("vt_reviews", JSON.stringify(globalReviews));
-    } catch { /* ignore */ }
+    // Persist per-student review map (UI state stays in localStorage)
+    try { localStorage.setItem(`vt_student_reviews_${user.id}`, JSON.stringify(updated)); } catch { /* ignore */ }
+    // Write rating to Supabase
+    db.addRating(reviewTarget.tutorId, {
+      id: reviewTarget.matchId,
+      tutor_id: reviewTarget.tutorId,
+      rating,
+      reviewer_name: user.name,
+      comment: body,
+      created_at: new Date().toISOString(),
+    }).catch(() => { /* ignore */ });
+    // Write global review to Supabase
+    db.createReview({
+      id: reviewTarget.matchId,
+      tutor_id: reviewTarget.tutorId,
+      reviewer_name: user.name,
+      student_name: user.name,
+      rating,
+      text: body || `Great tutor for ${reviewTarget.subject}!`,
+      comment: body,
+      created_at: new Date().toISOString(),
+    }).catch(() => { /* ignore */ });
   }
 
   if (isLoading || !user) return null;

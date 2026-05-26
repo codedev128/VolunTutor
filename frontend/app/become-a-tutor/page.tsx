@@ -65,7 +65,7 @@ function SignUpDialog() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleSignUp() {
+  async function handleSignUp() {
     setError("");
     if (!name.trim() || !email.trim() || !password.trim()) {
       setError("Please fill in all fields.");
@@ -76,7 +76,7 @@ function SignUpDialog() {
       return;
     }
     setLoading(true);
-    const result = signUp(name.trim(), email.trim(), password);
+    const result = await signUp(name.trim(), email.trim(), password);
     if (!result.ok) {
       setError(result.error ?? "Something went wrong.");
       setLoading(false);
@@ -181,14 +181,14 @@ function SignInDialog() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleSignIn() {
+  async function handleSignIn() {
     setError("");
     if (!email.trim() || !password.trim()) {
       setError("Please enter your email and password.");
       return;
     }
     setLoading(true);
-    const result = signIn(email.trim(), password);
+    const result = await signIn(email.trim(), password);
     if (!result.ok) {
       setError(result.error ?? "Something went wrong.");
       setLoading(false);

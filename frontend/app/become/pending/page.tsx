@@ -33,21 +33,21 @@ export default function BecomePendingPage() {
     setMounted(true);
     const pendingEmail = localStorage.getItem("vt_pending_email");
     if (!pendingEmail) { router.replace("/become"); return; }
+    const emailStr: string = pendingEmail;
 
-    function checkStatus() {
+    async function checkStatus() {
       if (redirectingRef.current) return;
       try {
-        const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-        const app = apps.find((a) => a.email === pendingEmail);
+        const app = await import("@/lib/db").then((db) => db.getApplicationByEmail(emailStr));
         if (!app) return;
         setApplicantName(app.name);
         setApplicantEmail(app.email);
-        setSubmittedAt(app.submittedAt);
-        setReviewNote(app.reviewNote ?? "");
+        setSubmittedAt(app.submitted_at);
+        setReviewNote(app.review_note ?? "");
         if (app.status === "approved") {
           redirectingRef.current = true;
           setStatus("redirecting");
-          const result = signIn(app.email, app.password);
+          const result = await signIn(app.email, app.password);
           if (result.ok) {
             localStorage.removeItem("vt_pending_email");
             router.push("/become/onboarding");

@@ -6,6 +6,7 @@ import Link from "next/link";
 import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import * as db from "@/lib/db";
 
 export default function ModLoginPage() {
   const id = useId();
@@ -24,13 +25,11 @@ export default function ModLoginPage() {
     }
   }, [router]);
 
-  function handleSignIn() {
+  async function handleSignIn() {
     setError("");
     if (!email.trim() || !password.trim()) { setError("Please enter your credentials."); return; }
     try {
-      const mods: { id: string; email: string; password: string }[] =
-        JSON.parse(localStorage.getItem("vt_moderators") || "[]");
-      const mod = mods.find((m) => m.email === email.trim().toLowerCase() && m.password === password);
+      const mod = await db.getModeratorByCredentials(email.trim().toLowerCase(), password);
       if (!mod) { setError("Invalid moderator credentials."); return; }
       setLoading(true);
       localStorage.setItem("vt_mod_session", mod.id);

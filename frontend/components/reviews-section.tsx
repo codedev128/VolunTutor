@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
+import * as db from "@/lib/db";
 
 interface Review {
   id: string;
@@ -345,20 +346,34 @@ export function ReviewsSection() {
   const [reviews, setReviews] = useState<Review[]>([]);
 
   useEffect(() => {
-    try {
-      const stored: Review[] = JSON.parse(localStorage.getItem("vt_reviews") || "[]");
-      setReviews([...stored, ...SEED_REVIEWS]);
-    } catch {
-      setReviews(SEED_REVIEWS);
+    async function loadReviews() {
+      try {
+        const stored = await db.getReviews();
+        const mapped: Review[] = stored.map((r) => ({
+          id: r.id,
+          name: r.reviewer_name ?? r.student_name ?? "Anonymous",
+          role: "student" as const,
+          message: r.text ?? r.comment ?? "",
+          rating: r.rating,
+          createdAt: r.created_at ?? new Date().toISOString().split("T")[0],
+        }));
+        setReviews([...mapped, ...SEED_REVIEWS]);
+      } catch {
+        setReviews(SEED_REVIEWS);
+      }
     }
+    loadReviews();
   }, []);
 
   function handleNewReview(review: Review) {
     setReviews((prev) => [review, ...prev]);
-    try {
-      const stored: Review[] = JSON.parse(localStorage.getItem("vt_reviews") || "[]");
-      localStorage.setItem("vt_reviews", JSON.stringify([review, ...stored]));
-    } catch { /* ignore */ }
+    db.createReview({
+      id: review.id,
+      reviewer_name: review.name,
+      rating: review.rating,
+      text: review.message,
+      created_at: review.createdAt,
+    }).catch(() => { /* ignore */ });
   }
 
   return (

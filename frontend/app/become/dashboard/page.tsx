@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/context/auth-context";
+import * as db from "@/lib/db";
 
 /* ── Types ───────────────────────────────────────────── */
 type MatchStatus = "ACTIVE" | "AWAITING_FIRST_SESSION" | "PAUSED";
@@ -654,59 +655,75 @@ export default function TutorDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    try {
-      const profileRaw = localStorage.getItem(`vt_tutor_profile_${user.id}`);
-      const profile = profileRaw ? JSON.parse(profileRaw) : { subjects: [] };
-      const rejected: string[] = JSON.parse(localStorage.getItem(`vt_tutor_rejected_${user.id}`) || "[]");
-      const allRequests: StudentRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-
-      const matching = allRequests.filter((req) => {
-        if (req.status !== "pending") return false;
-        if (rejected.includes(req.id)) return false;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ts = profile.subjects.find((s: any) => s.name.toLowerCase() === req.subject.toLowerCase());
-        if (!ts) return false;
-        return (EDU_RANK[ts.educationLevel] ?? 1) >= (GRADE_RANK[req.gradeLevel] ?? 1);
-      });
-      setPendingRequests(matching);
-
-      const savedMatches: ActiveMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${user.id}`) || "[]");
-      if (savedMatches.length > 0) {
-        setMatches((prev) => {
-          const ids = new Set(prev.map((m) => m.id));
-          return [...prev, ...savedMatches.filter((m) => !ids.has(m.id))];
-        });
-        setMessages((prev) => {
-          const next = { ...prev };
-          savedMatches.forEach((m) => {
-            if (!next[m.id]) {
-              try { next[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
-              catch { next[m.id] = []; }
-            }
-          });
-          return next;
-        });
-      }
-    } catch { /* ignore */ }
-  }, [user]);
-
-  // Sync pending requests across tabs — fires when another tab writes to vt_student_requests
-  useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key !== "vt_student_requests") return;
+    async function loadMatchesAndRequests() {
       try {
-        const allReqs: StudentRequest[] = JSON.parse(e.newValue || "[]");
-        setPendingRequests((prev) =>
-          prev.filter((r) => {
-            const fresh = allReqs.find((a) => a.id === r.id);
-            return fresh?.status === "pending";
-          })
-        );
+        const profile = await db.getTutorProfile(user!.id);
+        const subjects = profile?.subjects ?? [];
+        const rejected: string[] = JSON.parse(localStorage.getItem(`vt_tutor_rejected_${user!.id}`) || "[]");
+        const allRequests = await db.getRequests();
+
+        const matching = allRequests.filter((req) => {
+          if (req.status !== "pending") return false;
+          if (rejected.includes(req.id)) return false;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const ts = subjects.find((s: any) => s.name.toLowerCase() === req.subject.toLowerCase());
+          if (!ts) return false;
+          return (EDU_RANK[ts.educationLevel] ?? 1) >= (GRADE_RANK[req.grade_level ?? ""] ?? 1);
+        });
+        // Map db fields to component interface
+        const mappedRequests: StudentRequest[] = matching.map((req) => ({
+          id: req.id,
+          studentName: req.student_name,
+          avatar: req.avatar ?? req.student_name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
+          subject: req.subject,
+          gradeLevel: req.grade_level,
+          helpMessage: req.help_message ?? "",
+          availabilitySlots: req.availability_slots ?? [],
+          recurrenceWeeks: req.recurrence_weeks,
+          submittedAt: req.submitted_at,
+          status: req.status as "pending" | "accepted",
+          acceptedByTutorId: req.accepted_by_tutor_id,
+        }));
+        setPendingRequests(mappedRequests);
+
+        const savedMatches = await db.getTutorMatches(user!.id);
+        if (savedMatches.length > 0) {
+          const mappedMatches: ActiveMatch[] = savedMatches.map((m) => ({
+            id: m.id,
+            studentName: m.student_name ?? "Student",
+            avatar: m.avatar ?? "??",
+            subject: m.subject ?? "",
+            gradeLevel: m.grade_level ?? "",
+            proficiency: ((m.proficiency ?? "BEGINNER") as ActiveMatch["proficiency"]),
+            helpMessage: m.help_message ?? "",
+            matchedAt: m.matched_at ?? "recently",
+            sessionCount: m.session_count ?? 0,
+            nextSession: m.next_session ?? null,
+            bookedSlots: m.booked_slots ?? [],
+            status: (m.status ?? "ACTIVE") as MatchStatus,
+            unreadMessages: m.unread_messages ?? 0,
+          }));
+          setMatches((prev) => {
+            const ids = new Set(prev.map((m) => m.id));
+            return [...prev, ...mappedMatches.filter((m) => !ids.has(m.id))];
+          });
+          setMessages((prev) => {
+            const next = { ...prev };
+            mappedMatches.forEach((m) => {
+              if (!next[m.id]) {
+                try { next[m.id] = JSON.parse(localStorage.getItem(`vt_messages_${m.id}`) || "[]"); }
+                catch { next[m.id] = []; }
+              }
+            });
+            return next;
+          });
+        }
       } catch { /* ignore */ }
     }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+    loadMatchesAndRequests();
+  }, [user]);
+
+  // No-op: cross-tab sync handled by Supabase now
 
   function dismissSlot(reqId: string, slot: string) {
     const key = `${reqId}|${slot}`;
@@ -719,17 +736,6 @@ export default function TutorDashboard() {
   }
 
   function handleAcceptSlot(req: StudentRequest, slot: string) {
-    // Re-read from localStorage to guard against another tutor accepting first
-    try {
-      const allReqs: StudentRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-      const fresh = allReqs.find((r) => r.id === req.id);
-      if (!fresh || fresh.status !== "pending") {
-        // Already claimed — remove it from our local view and bail
-        setPendingRequests((prev) => prev.filter((r) => r.id !== req.id));
-        return;
-      }
-    } catch { /* ignore */ }
-
     const session = slotKeyToSession(slot);
     const weeks = req.recurrenceWeeks ?? 1;
     const newSlots = expandSlot(slot, weeks);
@@ -742,10 +748,11 @@ export default function TutorDashboard() {
         status: "ACTIVE",
       };
       setMatches((prev) => prev.map((m) => m.id === req.id ? updated : m));
-      const saved: ActiveMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${user!.id}`) || "[]");
-      localStorage.setItem(`vt_tutor_matches_${user!.id}`, JSON.stringify(
-        saved.some((m) => m.id === req.id) ? saved.map((m) => m.id === req.id ? updated : m) : [...saved, updated]
-      ));
+      db.updateMatch(user!.id, req.id, {
+        booked_slots: updated.bookedSlots,
+        next_session: updated.nextSession,
+        status: "ACTIVE",
+      }).catch(() => { /* ignore */ });
     } else {
       const newMatch: ActiveMatch = {
         id: req.id,
@@ -764,18 +771,27 @@ export default function TutorDashboard() {
       };
       setMatches((prev) => [...prev, newMatch]);
       setMessages((prev) => ({ ...prev, [req.id]: [] }));
-      const saved: ActiveMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${user!.id}`) || "[]");
-      localStorage.setItem(`vt_tutor_matches_${user!.id}`, JSON.stringify([...saved, newMatch]));
+      db.createMatch({
+        id: newMatch.id,
+        tutor_id: user!.id,
+        student_id: undefined,
+        subject: newMatch.subject,
+        grade_level: newMatch.gradeLevel,
+        booked_slots: newMatch.bookedSlots ?? [],
+        matched_at: new Date().toISOString(),
+        status: newMatch.status,
+        student_name: newMatch.studentName,
+        avatar: newMatch.avatar,
+        help_message: newMatch.helpMessage,
+        session_count: 0,
+        next_session: newMatch.nextSession,
+        proficiency: newMatch.proficiency,
+        unread_messages: 0,
+      }).catch(() => { /* ignore */ });
     }
 
-    // Mark request as accepted in shared storage — this is visible to all other tutors
-    try {
-      const allReqs: StudentRequest[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-      const updated = allReqs.map((r) =>
-        r.id === req.id ? { ...r, status: "accepted" as const, acceptedByTutorId: user!.id } : r
-      );
-      localStorage.setItem("vt_student_requests", JSON.stringify(updated));
-    } catch { /* ignore */ }
+    // Mark request as accepted in Supabase
+    db.updateRequestStatus(req.id, "accepted", user!.id).catch(() => { /* ignore */ });
 
     // Remove the request from this tutor's pending list immediately
     setPendingRequests((prev) => prev.filter((r) => r.id !== req.id));
@@ -797,20 +813,22 @@ export default function TutorDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    try {
-      const raw = localStorage.getItem(`vt_tutor_profile_${user.id}`);
-      if (raw) {
-        const profile = JSON.parse(raw);
-        setProfileSubjects(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          profile.subjects.map((s: any) => ({
-            name: s.name,
-            level: mapProficiencyLevel(s.proficiency),
-            education: EDUCATION_LABELS[s.educationLevel] ?? s.educationLevel,
-          }))
-        );
-      }
-    } catch { /* ignore malformed data */ }
+    async function loadProfile() {
+      try {
+        const profile = await db.getTutorProfile(user!.id);
+        if (profile) {
+          setProfileSubjects(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            profile.subjects.map((s: any) => ({
+              name: s.name,
+              level: mapProficiencyLevel(s.proficiency),
+              education: EDUCATION_LABELS[s.educationLevel] ?? s.educationLevel,
+            }))
+          );
+        }
+      } catch { /* ignore */ }
+    }
+    loadProfile();
   }, [user]);
 
   if (isLoading || !user) return null;

@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/context/auth-context";
 import { validateEmail, verifyEmailDomain } from "@/lib/email-validation";
 import { generateOTP, storeOTP, verifyOTP, sendOTP } from "@/lib/otp";
+import * as db from "@/lib/db";
 
 function BrandMark() {
   return (
@@ -87,21 +88,19 @@ function SignUpDialog() {
     if (password !== confirm) { setError("Passwords do not match."); return; }
     // Check for duplicate application or account
     try {
-      const apps: { email: string; status: string; reviewNote?: string }[] =
-        JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-      const existing = apps.find((a) => a.email === email.trim().toLowerCase());
+      const existing = await db.getApplicationByEmail(email.trim().toLowerCase());
       if (existing) {
         if (existing.status === "pending") {
           localStorage.setItem("vt_pending_email", email.trim().toLowerCase());
           router.push("/become/pending"); return;
         }
         if (existing.status === "denied") {
-          setError(`Your previous application was denied${existing.reviewNote ? `: "${existing.reviewNote}"` : ""}. Please contact support.`); return;
+          setError(`Your previous application was denied${existing.review_note ? `: "${existing.review_note}"` : ""}. Please contact support.`); return;
         }
         setError("An account with this email already exists. Please sign in."); return;
       }
-      const users: { email: string }[] = JSON.parse(localStorage.getItem("vt_users") || "[]");
-      if (users.find((u) => u.email === email.trim().toLowerCase())) {
+      const user = await db.getUserByEmail(email.trim().toLowerCase());
+      if (user) {
         setError("An account with this email already exists. Please sign in."); return;
       }
     } catch { /* ignore */ }
@@ -138,25 +137,20 @@ function SignUpDialog() {
     setStep("otp");
   }
 
-  function handleVerifyOTP() {
+  async function handleVerifyOTP() {
     const result = verifyOTP(email.trim().toLowerCase(), enteredOtp);
     if (!result.ok) { setOtpError(result.error!); return; }
     setLoading(true);
     try {
-      const app = {
+      await db.createApplication({
         id: Date.now().toString(),
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
-        cvFileName: cvFile?.name ?? "cv",
-        cvDataUrl: pendingCvDataUrl,
-        status: "pending",
-        submittedAt: new Date().toISOString(),
-      };
-      const apps = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-      apps.push(app);
-      localStorage.setItem("vt_tutor_applications", JSON.stringify(apps));
-      localStorage.setItem("vt_pending_email", app.email);
+        cv_file_name: cvFile?.name ?? "cv",
+        cv_data_url: pendingCvDataUrl,
+      });
+      localStorage.setItem("vt_pending_email", email.trim().toLowerCase());
       router.push("/become/pending");
     } catch {
       setOtpError("Failed to submit application. Please try again.");
@@ -311,7 +305,7 @@ function SignInDialog() {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
-  function handleSignIn() {
+  async function handleSignIn() {
     setError("");
     if (!email.trim() || !password.trim()) { setError("Please enter your email and password."); return; }
     if (email.trim() === "admin@voluntutor.app" && password === "Admin@1234") {
@@ -321,9 +315,7 @@ function SignInDialog() {
     }
     // Check moderator credentials
     try {
-      const mods: { id: string; email: string; password: string }[] =
-        JSON.parse(localStorage.getItem("vt_moderators") || "[]");
-      const mod = mods.find((m) => m.email === email.trim().toLowerCase() && m.password === password);
+      const mod = await db.getModeratorByCredentials(email.trim().toLowerCase(), password);
       if (mod) {
         localStorage.setItem("vt_mod_session", mod.id);
         router.push("/mod/dashboard");
@@ -332,22 +324,20 @@ function SignInDialog() {
     } catch { /* ignore */ }
     // Check tutor applications
     try {
-      const apps: { email: string; password: string; status: string; reviewNote?: string }[] =
-        JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-      const app = apps.find((a) => a.email === email.trim().toLowerCase() && a.password === password);
-      if (app) {
+      const app = await db.getApplicationByEmail(email.trim().toLowerCase());
+      if (app && app.password === password) {
         if (app.status === "pending") {
           localStorage.setItem("vt_pending_email", app.email);
           router.push("/become/pending"); return;
         }
         if (app.status === "denied") {
-          setError(`Your tutor application was denied${app.reviewNote ? `: "${app.reviewNote}"` : ""}. Please contact support.`); return;
+          setError(`Your tutor application was denied${app.review_note ? `: "${app.review_note}"` : ""}. Please contact support.`); return;
         }
         // approved — account was created, fall through to normal sign-in
       }
     } catch { /* ignore */ }
     setLoading(true);
-    const result = signIn(email.trim(), password);
+    const result = await signIn(email.trim(), password);
     if (!result.ok) { setError(result.error ?? "Something went wrong."); setLoading(false); return; }
     if (result.user?.role === "student") { router.push("/find/dashboard"); return; }
     router.push("/become/dashboard");
@@ -422,8 +412,11 @@ export default function BecomePage() {
   useEffect(() => {
     if (!isLoading && user) {
       if (user.role === "student") { router.replace("/find/dashboard"); return; }
-      const hasProfile = !!localStorage.getItem(`vt_tutor_profile_${user.id}`);
-      router.replace(hasProfile ? "/become/dashboard" : "/become/onboarding");
+      async function checkProfile() {
+        const profile = await db.getTutorProfile(user!.id);
+        router.replace(profile ? "/become/dashboard" : "/become/onboarding");
+      }
+      checkProfile();
     }
   }, [user, isLoading, router]);
 

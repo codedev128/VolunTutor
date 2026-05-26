@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import * as db from "@/lib/db";
 
 /* ── Types ───────────────────────────────────────────── */
 interface StoredUser {
@@ -79,7 +80,7 @@ const GRADE_LABELS: Record<string, string> = {
 /* ── Confirm Dialog ──────────────────────────────────── */
 function ConfirmDialog({
   message, onConfirm, onCancel,
-}: { message: string; onConfirm: () => void; onCancel: () => void }) {
+}: { message: string; onConfirm: () => void | Promise<void>; onCancel: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/60" onClick={onCancel} />
@@ -172,7 +173,7 @@ export default function AdminDashboard() {
   const [newModError, setNewModError] = useState("");
   const [appDenyNotes, setAppDenyNotes] = useState<Record<string, string>>({});
   const [showDenyFor, setShowDenyFor] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
+  const [confirm, setConfirm] = useState<{ message: string; action: () => void | Promise<void> } | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -184,16 +185,32 @@ export default function AdminDashboard() {
     loadData();
   }, [router]);
 
-  function loadData() {
+  async function loadData() {
     try {
-      const allUsers: StoredUser[] = JSON.parse(localStorage.getItem("vt_users") || "[]");
-      setUsers(allUsers);
-      const allReqs: Request[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-      setRequests(allReqs);
+      const allUsers = await db.getUsers();
+      const mappedUsers: StoredUser[] = allUsers.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role }));
+      setUsers(mappedUsers);
+
+      const allReqs = await db.getRequests();
+      const mappedReqs: Request[] = allReqs.map((r) => ({
+        id: r.id,
+        studentId: r.student_id,
+        studentName: r.student_name,
+        subject: r.subject,
+        gradeLevel: r.grade_level,
+        helpMessage: r.help_message ?? "",
+        availabilitySlots: r.availability_slots ?? [],
+        submittedAt: r.submitted_at,
+        status: r.status,
+        acceptedByTutorId: r.accepted_by_tutor_id,
+        targetTutorId: r.target_tutor_id,
+        recurrenceWeeks: r.recurrence_weeks,
+      }));
+      setRequests(mappedReqs);
+
+      // Build banned set from is_banned column
       const banned = new Set<string>();
-      allUsers.forEach((u) => {
-        if (localStorage.getItem(`vt_banned_${u.id}`)) banned.add(u.id);
-      });
+      allUsers.forEach((u) => { if (u.is_banned) banned.add(u.id); });
       setBannedIds(banned);
 
       const tutorList = allUsers.filter((u) => u.role === "tutor");
@@ -201,72 +218,100 @@ export default function AdminDashboard() {
 
       // Build sessions
       const computedSessions: SessionRow[] = [];
-      tutorList.forEach((t) => {
+      await Promise.all(tutorList.map(async (t) => {
         try {
-          const matches: TutorMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${t.id}`) || "[]");
+          const matches = await db.getTutorMatches(t.id);
           matches.forEach((m) => {
-            const student = studentList.find((s) => s.id === m.studentId);
+            const student = studentList.find((s) => s.id === m.student_id);
             computedSessions.push({
               matchId: m.id,
               tutorId: t.id,
               tutorName: t.name,
-              studentId: m.studentId ?? "",
+              studentId: m.student_id ?? "",
               studentName: student?.name ?? "Unknown",
               subject: m.subject ?? "—",
-              gradeLevel: m.gradeLevel ?? "—",
-              bookedSlots: m.bookedSlots ?? [],
-              matchedAt: m.matchedAt ?? "",
+              gradeLevel: m.grade_level ?? "—",
+              bookedSlots: m.booked_slots ?? [],
+              matchedAt: m.matched_at ?? "",
               status: m.status ?? "ACTIVE",
             });
           });
         } catch { /* ignore */ }
-      });
+      }));
       setSessions(computedSessions);
 
       // Enrich tutors
-      const enriched: EnrichedTutor[] = tutorList.map((t) => {
-        const profile = (() => { try { return JSON.parse(localStorage.getItem(`vt_tutor_profile_${t.id}`) || "{}"); } catch { return {}; } })();
-        const subjects: Array<{ name: string }> = profile.subjects ?? [];
-        const matchCount = (() => { try { return JSON.parse(localStorage.getItem(`vt_tutor_matches_${t.id}`) || "[]").length; } catch { return 0; } })();
-        const ratings: Array<{ rating: number }> = (() => { try { return JSON.parse(localStorage.getItem(`vt_tutor_ratings_${t.id}`) || "[]"); } catch { return []; } })();
+      const enriched: EnrichedTutor[] = await Promise.all(tutorList.map(async (t) => {
+        const profile = await db.getTutorProfile(t.id).catch(() => null);
+        const subjects: Array<{ name: string }> = profile?.subjects ?? [];
+        const matches = await db.getTutorMatches(t.id).catch(() => []);
+        const matchCount = matches.length;
+        const ratings = await db.getTutorRatings(t.id).catch(() => []);
         const avg = ratings.length ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1) : null;
-        return { ...t, subjects, matchCount, ratings, avg };
-      });
+        return { id: t.id, name: t.name, email: t.email, role: t.role as "tutor" | "student", subjects, matchCount, ratings, avg };
+      }));
       setEnrichedTutors(enriched);
 
       // Reviews
-      const computedReviews: ReviewRecord[] = JSON.parse(localStorage.getItem("vt_reviews") || "[]");
-      setReviews(computedReviews);
+      const computedReviews = await db.getReviews();
+      setReviews(computedReviews.map((r) => ({
+        id: r.id,
+        tutorId: r.tutor_id ?? "",
+        tutorName: r.tutor_name,
+        reviewerName: r.reviewer_name,
+        studentName: r.student_name,
+        rating: r.rating,
+        text: r.text,
+        comment: r.comment,
+        createdAt: r.created_at,
+      })));
 
       // Applications
-      const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-      setApplications(apps.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
+      const apps = await db.getApplications();
+      setApplications(
+        apps
+          .map((a): TutorApplication => ({
+            id: a.id,
+            name: a.name,
+            email: a.email,
+            password: a.password,
+            cvFileName: a.cv_file_name ?? "",
+            cvDataUrl: a.cv_data_url ?? "",
+            status: a.status,
+            submittedAt: a.submitted_at,
+            reviewedAt: a.reviewed_at,
+            reviewedBy: a.reviewed_by,
+            reviewNote: a.review_note,
+          }))
+          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+      );
 
       // Moderators
-      const mods: Moderator[] = JSON.parse(localStorage.getItem("vt_moderators") || "[]");
-      setModerators(mods);
+      const mods = await db.getModerators();
+      setModerators(mods.map((m) => ({ id: m.id, name: m.name, email: m.email, password: m.password, createdAt: m.created_at ?? "" })));
     } catch { /* ignore */ }
   }
 
   const tutors = users.filter((u) => u.role === "tutor");
   const students = users.filter((u) => u.role === "student");
 
-  const pendingCount  = requests.filter((r) => r.status === "pending").length;
-  const acceptedCount = requests.filter((r) => r.status === "accepted").length;
+  const pendingCount       = requests.filter((r) => r.status === "pending").length;
+  const acceptedCount      = requests.filter((r) => r.status === "accepted").length;
+  const activeSessionCount = sessions.filter((s) => s.status === "ACTIVE").length;
 
   /* Actions */
   const toggleBan = useCallback((userId: string, currentlyBanned: boolean) => {
-    const action = () => {
-      if (currentlyBanned) {
-        localStorage.removeItem(`vt_banned_${userId}`);
-        setBannedIds((prev) => { const n = new Set(prev); n.delete(userId); return n; });
-      } else {
-        localStorage.setItem(`vt_banned_${userId}`, "1");
+    const action = async () => {
+      await db.setBanned(userId, !currentlyBanned).catch(() => { /* ignore */ });
+      if (!currentlyBanned) {
+        // Force sign-out the banned user if they are currently logged in
         try {
           const sess = JSON.parse(localStorage.getItem("vt_session") || "null");
           if (sess?.id === userId) localStorage.removeItem("vt_session");
         } catch { /* ignore */ }
         setBannedIds((prev) => new Set([...prev, userId]));
+      } else {
+        setBannedIds((prev) => { const n = new Set(prev); n.delete(userId); return n; });
       }
       setConfirm(null);
     };
@@ -281,31 +326,22 @@ export default function AdminDashboard() {
   const deleteRequest = useCallback((reqId: string) => {
     setConfirm({
       message: "Delete this request permanently? This cannot be undone.",
-      action: () => {
-        const updated = requests.filter((r) => r.id !== reqId);
-        localStorage.setItem("vt_student_requests", JSON.stringify(updated));
-        setRequests(updated);
+      action: async () => {
+        await db.deleteRequest(reqId).catch(() => { /* ignore */ });
+        setRequests((prev) => prev.filter((r) => r.id !== reqId));
         setConfirm(null);
       },
     });
-  }, [requests]);
+  }, []);
 
   const deleteSession = useCallback((tutorId: string, matchId: string) => {
     setConfirm({
       message: "Delete this session/match permanently? Both the tutor and student will lose this record.",
-      action: () => {
-        try {
-          const matches: TutorMatch[] = JSON.parse(localStorage.getItem(`vt_tutor_matches_${tutorId}`) || "[]");
-          const updated = matches.filter((m) => m.id !== matchId);
-          localStorage.setItem(`vt_tutor_matches_${tutorId}`, JSON.stringify(updated));
-          const allReqs: Request[] = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-          const updatedReqs = allReqs.map((r) =>
-            r.id === matchId ? { ...r, status: "cancelled" as const } : r
-          );
-          localStorage.setItem("vt_student_requests", JSON.stringify(updatedReqs));
-          setRequests(updatedReqs);
-        } catch { /* ignore */ }
-        loadData();
+      action: async () => {
+        await db.deleteMatch(tutorId, matchId).catch(() => { /* ignore */ });
+        // Cancel the associated request if it exists
+        await db.updateRequestStatus(matchId, "cancelled").catch(() => { /* ignore */ });
+        await loadData();
         setConfirm(null);
       },
     });
@@ -314,47 +350,42 @@ export default function AdminDashboard() {
   const deleteAccount = useCallback((userId: string, userName: string) => {
     setConfirm({
       message: `Permanently delete ${userName}'s account? All their data will be removed. This cannot be undone.`,
-      action: () => {
-        const updated = users.filter((u) => u.id !== userId);
-        localStorage.setItem("vt_users", JSON.stringify(updated));
-        localStorage.removeItem(`vt_banned_${userId}`);
-        localStorage.removeItem(`vt_session`);
-        loadData();
+      action: async () => {
+        await db.deleteUser(userId).catch(() => { /* ignore */ });
+        // Sign out the deleted user if they are currently logged in
+        try {
+          const sess = JSON.parse(localStorage.getItem("vt_session") || "null");
+          if (sess?.id === userId) localStorage.removeItem("vt_session");
+        } catch { /* ignore */ }
+        await loadData();
         setConfirm(null);
       },
     });
-  }, [users]); // eslint-disable-line
+  }, []); // eslint-disable-line
 
   const deleteReview = useCallback((reviewId: string) => {
     setConfirm({
       message: "Delete this review permanently?",
-      action: () => {
-        const updated = reviews.filter((r) => r.id !== reviewId);
-        localStorage.setItem("vt_reviews", JSON.stringify(updated));
-        setReviews(updated);
+      action: async () => {
+        await db.deleteReview(reviewId).catch(() => { /* ignore */ });
+        setReviews((prev) => prev.filter((r) => r.id !== reviewId));
         setConfirm(null);
       },
     });
-  }, [reviews]);
+  }, []);
 
   const adminApproveApp = useCallback((app: TutorApplication) => {
     setConfirm({
       message: `Approve ${app.name}'s application? This will create their tutor account.`,
-      action: () => {
+      action: async () => {
         try {
-          const allUsers: { id: string; name: string; email: string; role: string; password: string }[] =
-            JSON.parse(localStorage.getItem("vt_users") || "[]");
-          if (!allUsers.find((u) => u.email === app.email)) {
-            allUsers.push({ id: Date.now().toString(), name: app.name, email: app.email, role: "tutor", password: app.password });
-            localStorage.setItem("vt_users", JSON.stringify(allUsers));
+          const existing = await db.getUserByEmail(app.email);
+          if (!existing) {
+            await db.createUser({ id: Date.now().toString(), name: app.name, email: app.email, password: app.password, role: "tutor" });
           }
         } catch { /* ignore */ }
-        const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-        const updated = apps.map((a) =>
-          a.id === app.id ? { ...a, status: "approved" as const, reviewedAt: new Date().toISOString(), reviewedBy: "Admin" } : a
-        );
-        localStorage.setItem("vt_tutor_applications", JSON.stringify(updated));
-        loadData();
+        await db.updateApplicationStatus(app.id, "approved", "Admin").catch(() => { /* ignore */ });
+        await loadData();
         setConfirm(null);
       },
     });
@@ -364,22 +395,16 @@ export default function AdminDashboard() {
     const note = appDenyNotes[app.id] ?? "";
     setConfirm({
       message: `Deny ${app.name}'s application?`,
-      action: () => {
-        const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-        const updated = apps.map((a) =>
-          a.id === app.id
-            ? { ...a, status: "denied" as const, reviewedAt: new Date().toISOString(), reviewedBy: "Admin", reviewNote: note || undefined }
-            : a
-        );
-        localStorage.setItem("vt_tutor_applications", JSON.stringify(updated));
+      action: async () => {
+        await db.updateApplicationStatus(app.id, "denied", "Admin", note || undefined).catch(() => { /* ignore */ });
         setShowDenyFor(null);
-        loadData();
+        await loadData();
         setConfirm(null);
       },
     });
   }, [appDenyNotes]);
 
-  function createModerator() {
+  async function createModerator() {
     setNewModError("");
     if (!newMod.name.trim() || !newMod.email.trim() || !newMod.password.trim()) {
       setNewModError("All fields are required."); return;
@@ -394,24 +419,22 @@ export default function AdminDashboard() {
       password: newMod.password,
       createdAt: new Date().toISOString(),
     };
-    const updated = [...moderators, mod];
-    localStorage.setItem("vt_moderators", JSON.stringify(updated));
-    setModerators(updated);
+    await db.createModerator({ id: mod.id, name: mod.name, email: mod.email, password: mod.password, created_at: mod.createdAt }).catch(() => { /* ignore */ });
+    setModerators((prev) => [...prev, mod]);
     setNewMod({ name: "", email: "", password: "" });
   }
 
   const removeModerator = useCallback((modId: string, modName: string) => {
     setConfirm({
       message: `Remove ${modName} as a moderator? They will lose access immediately.`,
-      action: () => {
-        const updated = moderators.filter((m) => m.id !== modId);
-        localStorage.setItem("vt_moderators", JSON.stringify(updated));
+      action: async () => {
+        await db.deleteModerator(modId).catch(() => { /* ignore */ });
         if (localStorage.getItem("vt_mod_session") === modId) localStorage.removeItem("vt_mod_session");
-        setModerators(updated);
+        setModerators((prev) => prev.filter((m) => m.id !== modId));
         setConfirm(null);
       },
     });
-  }, [moderators]);
+  }, []);
 
   function signOut() {
     localStorage.removeItem("vt_admin_session");
@@ -497,7 +520,7 @@ export default function AdminDashboard() {
               <StatCard label="Total Students" value={students.length} color="bg-teal-400/20"
                 icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>}
               />
-              <StatCard label="Active Sessions" value={sessions.length} color="bg-blue-400/20"
+              <StatCard label="Active Sessions" value={activeSessionCount} color="bg-blue-400/20"
                 icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
               />
               <StatCard label="Pending Requests" value={pendingCount} color="bg-violet-400/20"

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import * as db from "@/lib/db";
 import { useRouter } from "next/navigation";
 import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { useAuth } from "@/context/auth-context";
@@ -154,7 +155,7 @@ function EducationStep({
   education: Record<string, string>;
   setEducation: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onBack: () => void;
-  onFinish: () => void;
+  onFinish: () => Promise<void> | void;
 }) {
   const proficiencyLabel = (val: string) =>
     PROFICIENCY_OPTIONS.find((o) => o.value === val)?.label ?? val;
@@ -240,7 +241,7 @@ export default function OnboardingPage() {
 
   const selectedSubjects = SUBJECTS.filter((s) => proficiency[s] !== "none");
 
-  function handleFinish() {
+  const handleFinish = useCallback(async () => {
     const profile = {
       subjects: selectedSubjects.map((s) => ({
         name: s,
@@ -248,9 +249,9 @@ export default function OnboardingPage() {
         educationLevel: education[s] || "ug",
       })),
     };
-    localStorage.setItem(`vt_tutor_profile_${user!.id}`, JSON.stringify(profile));
+    await db.setTutorProfile(user!.id, profile);
     router.push("/become/dashboard");
-  }
+  }, [selectedSubjects, proficiency, education, user, router]);
 
   return (
     <RhythmicRipplesBackground

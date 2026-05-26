@@ -84,11 +84,11 @@ function SignUpDialog() {
     setStep("otp");
   }
 
-  function handleVerifyOTP() {
+  async function handleVerifyOTP() {
     const result = verifyOTP(email.trim().toLowerCase(), enteredOtp);
     if (!result.ok) { setOtpError(result.error!); return; }
     setLoading(true);
-    const r = signUp(name.trim(), email.trim(), password, "student");
+    const r = await signUp(name.trim(), email.trim(), password, "student");
     if (!r.ok) { setOtpError(r.error ?? "Something went wrong."); setLoading(false); return; }
     router.push("/find/dashboard");
   }
@@ -216,7 +216,7 @@ function SignInDialog() {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
 
-  function handleSignIn() {
+  async function handleSignIn() {
     setError("");
     if (!email.trim() || !password.trim()) { setError("Please enter your email and password."); return; }
     if (email.trim() === "admin@voluntutor.app" && password === "Admin@1234") {
@@ -225,7 +225,7 @@ function SignInDialog() {
       return;
     }
     setLoading(true);
-    const result = signIn(email.trim(), password);
+    const result = await signIn(email.trim(), password);
     if (!result.ok) { setError(result.error ?? "Something went wrong."); setLoading(false); return; }
     if (result.user?.role === "tutor") {
       setError("That email belongs to a tutor account. Sign in at the Become a VolunTutor page.");

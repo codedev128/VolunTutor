@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
+import * as db from "@/lib/db";
 
 /* ── Constants ───────────────────────────────────────── */
 const SUBJECTS = [
@@ -269,58 +270,51 @@ function FindPageContent() {
   // Load already-booked and pending slots for this student
   useEffect(() => {
     if (!user) return;
-    try {
-      const allRequests: Array<{
-        id: string;
-        studentId?: string;
-        status: string;
-        availabilitySlots: string[];
-        acceptedByTutorId?: string;
-      }> = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
+    async function loadSlots() {
+      try {
+        const allRequests = await db.getRequestsByStudentId(user!.id);
+        const booked = new Set<string>();
+        const pending = new Set<string>();
 
-      const myRequests = allRequests.filter((r) => r.studentId === user.id);
-
-      const booked = new Set<string>();
-      const pending = new Set<string>();
-
-      for (const req of myRequests) {
-        if (req.status === "accepted" && req.acceptedByTutorId) {
-          const matches: Array<{ bookedSlots?: string[]; studentId?: string }> =
-            JSON.parse(localStorage.getItem(`vt_tutor_matches_${req.acceptedByTutorId}`) || "[]");
-          const match = matches.find((m) => m.studentId === user.id);
-          if (match?.bookedSlots) {
-            match.bookedSlots.forEach((k) => booked.add(k));
+        for (const req of allRequests) {
+          if (req.status === "accepted" && req.accepted_by_tutor_id) {
+            const tutorMatches = await db.getTutorMatches(req.accepted_by_tutor_id);
+            const match = tutorMatches.find((m) => m.student_id === user!.id);
+            if (match?.booked_slots) {
+              match.booked_slots.forEach((k) => booked.add(k));
+            }
+            req.availability_slots?.forEach((k) => booked.add(k));
+          } else if (req.status === "pending") {
+            req.availability_slots?.forEach((k) => pending.add(k));
           }
-          // Also block the full availability set the student originally offered
-          req.availabilitySlots?.forEach((k) => booked.add(k));
-        } else if (req.status === "pending") {
-          req.availabilitySlots?.forEach((k) => pending.add(k));
         }
-      }
 
-      setBookedSlots(booked);
-      setPendingSlots(pending);
-    } catch { /* ignore */ }
+        setBookedSlots(booked);
+        setPendingSlots(pending);
+      } catch { /* ignore */ }
+    }
+    loadSlots();
   }, [user]);
 
   // Load selected tutor's info and block their already-booked slots
   useEffect(() => {
     if (!targetTutorId) return;
-    try {
-      const allUsers: Array<{ id: string; name: string; role: string }> =
-        JSON.parse(localStorage.getItem("vt_users") || "[]");
-      const tutor = allUsers.find((u) => u.id === targetTutorId && u.role === "tutor");
-      if (!tutor) return;
-      const initials = tutor.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-      setTargetTutor({ id: tutor.id, name: tutor.name, initials });
+    const tutorIdStr: string = targetTutorId;
+    async function loadTargetTutor() {
+      try {
+        const allUsers = await db.getUsers();
+        const tutor = allUsers.find((u) => u.id === tutorIdStr && u.role === "tutor");
+        if (!tutor) return;
+        const initials = tutor.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+        setTargetTutor({ id: tutor.id, name: tutor.name, initials });
 
-      // Load tutor's booked slots into a separate set so they show a distinct colour
-      const tutorMatches: Array<{ bookedSlots?: string[] }> =
-        JSON.parse(localStorage.getItem(`vt_tutor_matches_${targetTutorId}`) || "[]");
-      const tbs = new Set<string>();
-      tutorMatches.forEach((m) => m.bookedSlots?.forEach((k) => tbs.add(k)));
-      setTutorBookedSlots(tbs);
-    } catch { /* ignore */ }
+        const tutorMatches = await db.getTutorMatches(tutorIdStr);
+        const tbs = new Set<string>();
+        tutorMatches.forEach((m) => m.booked_slots?.forEach((k) => tbs.add(k)));
+        setTutorBookedSlots(tbs);
+      } catch { /* ignore */ }
+    }
+    loadTargetTutor();
   }, [targetTutorId]);
 
   useEffect(() => {
@@ -337,7 +331,7 @@ function FindPageContent() {
     });
   }, []);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!user) return;
     setError("");
     if (!subject)             { setError("Please select a subject."); return; }
@@ -347,23 +341,19 @@ function FindPageContent() {
     if (cleanSlots.size === 0) { setError("Please select at least one availability slot."); return; }
 
     const avatar = user.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-    const request = {
-      id: Date.now().toString(),
-      studentName: user.name,
-      avatar,
-      subject,
-      gradeLevel,
-      helpMessage,
-      availabilitySlots: [...cleanSlots],
-      recurrenceWeeks,
-      submittedAt: new Date().toISOString(),
-      status: "pending",
-      studentId: user.id,
-      targetTutorId: targetTutorId ?? undefined,
-    };
     try {
-      const existing = JSON.parse(localStorage.getItem("vt_student_requests") || "[]");
-      localStorage.setItem("vt_student_requests", JSON.stringify([...existing, request]));
+      await db.createRequest({
+        id: Date.now().toString(),
+        student_id: user.id,
+        student_name: user.name,
+        avatar,
+        subject,
+        grade_level: gradeLevel,
+        help_message: helpMessage,
+        availability_slots: [...cleanSlots],
+        recurrence_weeks: recurrenceWeeks,
+        target_tutor_id: targetTutorId ?? undefined,
+      });
     } catch { /* ignore */ }
     setConfirmedSlots([...cleanSlots].sort());
     setSubmitted(true);

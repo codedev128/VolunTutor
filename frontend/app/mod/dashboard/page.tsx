@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import * as db from "@/lib/db";
 
 interface TutorApplication {
   id: string;
@@ -63,47 +64,58 @@ export default function ModDashboard() {
   const [filter, setFilter]         = useState<"pending" | "approved" | "denied" | "all">("pending");
   const [denyNotes, setDenyNotes]   = useState<Record<string, string>>({});
   const [showDenyFor, setShowDenyFor] = useState<string | null>(null);
-  const [confirm, setConfirm]       = useState<{ message: string; action: () => void } | null>(null);
+  const [confirm, setConfirm]       = useState<{ message: string; action: () => void | Promise<void> } | null>(null);
 
   useEffect(() => {
     setMounted(true);
     const modId = localStorage.getItem("vt_mod_session");
     if (!modId) { router.replace("/mod"); return; }
-    try {
-      const mods: (Moderator & { password: string })[] = JSON.parse(localStorage.getItem("vt_moderators") || "[]");
-      const found = mods.find((m) => m.id === modId);
-      if (!found) { localStorage.removeItem("vt_mod_session"); router.replace("/mod"); return; }
-      setMod({ id: found.id, name: found.name, email: found.email });
-    } catch { router.replace("/mod"); return; }
-    loadApplications();
+    async function init() {
+      try {
+        const found = await db.getModeratorById(modId!);
+        if (!found) { localStorage.removeItem("vt_mod_session"); router.replace("/mod"); return; }
+        setMod({ id: found.id, name: found.name, email: found.email });
+      } catch { router.replace("/mod"); return; }
+      loadApplications();
+    }
+    init();
   }, [router]);
 
   function loadApplications() {
-    try {
-      const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-      setApplications(apps.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()));
-    } catch { /* ignore */ }
+    db.getApplications().then((apps) => {
+      setApplications(
+        apps
+          .map((a): TutorApplication => ({
+            id: a.id,
+            name: a.name,
+            email: a.email,
+            password: a.password,
+            cvFileName: a.cv_file_name ?? "",
+            cvDataUrl: a.cv_data_url ?? "",
+            status: a.status,
+            submittedAt: a.submitted_at,
+            reviewedAt: a.reviewed_at,
+            reviewedBy: a.reviewed_by,
+            reviewNote: a.review_note,
+          }))
+          .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+      );
+    }).catch(() => { /* ignore */ });
   }
 
   const approveApplication = useCallback((app: TutorApplication) => {
     setConfirm({
       message: `Approve ${app.name}'s application? This will create their tutor account.`,
-      action: () => {
-        // Create user in vt_users
+      action: async () => {
+        // Create user in Supabase if not already there
         try {
-          const users: { id: string; name: string; email: string; role: string; password: string }[] =
-            JSON.parse(localStorage.getItem("vt_users") || "[]");
-          if (!users.find((u) => u.email === app.email)) {
-            users.push({ id: Date.now().toString(), name: app.name, email: app.email, role: "tutor", password: app.password });
-            localStorage.setItem("vt_users", JSON.stringify(users));
+          const existing = await db.getUserByEmail(app.email);
+          if (!existing) {
+            await db.createUser({ id: Date.now().toString(), name: app.name, email: app.email, password: app.password, role: "tutor" });
           }
         } catch { /* ignore */ }
-        // Update application
-        const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-        const updated = apps.map((a) =>
-          a.id === app.id ? { ...a, status: "approved" as const, reviewedAt: new Date().toISOString(), reviewedBy: mod?.name ?? "Moderator" } : a
-        );
-        localStorage.setItem("vt_tutor_applications", JSON.stringify(updated));
+        // Update application status
+        await db.updateApplicationStatus(app.id, "approved", mod?.name ?? "Moderator").catch(() => { /* ignore */ });
         loadApplications();
         setConfirm(null);
       },
@@ -114,14 +126,8 @@ export default function ModDashboard() {
     const note = denyNotes[app.id] ?? "";
     setConfirm({
       message: `Deny ${app.name}'s application?${note ? ` Note: "${note}"` : ""}`,
-      action: () => {
-        const apps: TutorApplication[] = JSON.parse(localStorage.getItem("vt_tutor_applications") || "[]");
-        const updated = apps.map((a) =>
-          a.id === app.id
-            ? { ...a, status: "denied" as const, reviewedAt: new Date().toISOString(), reviewedBy: mod?.name ?? "Moderator", reviewNote: note || undefined }
-            : a
-        );
-        localStorage.setItem("vt_tutor_applications", JSON.stringify(updated));
+      action: async () => {
+        await db.updateApplicationStatus(app.id, "denied", mod?.name ?? "Moderator", note || undefined).catch(() => { /* ignore */ });
         setShowDenyFor(null);
         loadApplications();
         setConfirm(null);

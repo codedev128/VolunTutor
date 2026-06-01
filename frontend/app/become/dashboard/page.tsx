@@ -358,19 +358,18 @@ function Avatar({ initials, src, size = "md", color = "amber", onClick }: {
 /* ── Profile Panel ───────────────────────────────────── */
 function ProfilePanel({
   isOpen, onClose, initials, profilePic, bio, bioEditing, bioInput,
-  matches, totalSessions, onAvatarClick, setBioInput, setBioEditing, saveBio, onSignOut,
+  matches, totalSessions, hoursWorked, onAvatarClick, setBioInput, setBioEditing, saveBio, onSignOut,
   gmeetUrl, gmeetInput, gmeetEditing, setGmeetInput, setGmeetEditing, saveGmeetUrl,
 }: {
   isOpen: boolean; onClose: () => void; initials: string; profilePic: string | null;
   bio: string; bioEditing: boolean; bioInput: string;
-  matches: ActiveMatch[]; totalSessions: number;
+  matches: ActiveMatch[]; totalSessions: number; hoursWorked: number;
   onAvatarClick: () => void; setBioInput: (v: string) => void;
   setBioEditing: (v: boolean) => void; saveBio: () => void; onSignOut: () => void;
   gmeetUrl: string; gmeetInput: string; gmeetEditing: boolean;
   setGmeetInput: (v: string) => void; setGmeetEditing: (v: boolean) => void; saveGmeetUrl: () => void;
 }) {
   if (!isOpen) return null;
-  const hoursWorked = totalSessions;
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]" onClick={onClose} />
@@ -591,6 +590,7 @@ export default function TutorDashboard() {
   const [gmeetInput, setGmeetInput] = useState("");
   const [gmeetEditing, setGmeetEditing] = useState(false);
   const [meetInvites, setMeetInvites] = useState<Record<string, boolean>>({});
+  const [hoursWorked, setHoursWorked] = useState(0);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [dismissedSlots, setDismissedSlots] = useState<Set<string>>(new Set());
   const [messages, setMessages] = useState<Record<string, { from: "tutor" | "student"; body: string; sentAt?: string }[]>>({});
@@ -621,6 +621,7 @@ export default function TutorDashboard() {
       try {
         const profile = await db.getTutorProfile(user!.id);
         const subjects = profile?.subjects ?? [];
+        setHoursWorked(profile?.hours_worked ?? 0);
         const rejected: string[] = JSON.parse(localStorage.getItem(`vt_tutor_rejected_${user!.id}`) || "[]");
         const allRequests = await db.getRequests();
 
@@ -932,6 +933,7 @@ export default function TutorDashboard() {
         bioInput={bioInput}
         matches={matches}
         totalSessions={totalSessions}
+        hoursWorked={hoursWorked}
         onAvatarClick={() => avatarInputRef.current?.click()}
         setBioInput={setBioInput}
         setBioEditing={setBioEditing}
@@ -947,8 +949,8 @@ export default function TutorDashboard() {
       {/* ── Navbar ── */}
       <nav className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
-          <Link href="/become/dashboard" className="flex items-center">
-            <Image src="/Guide_app_logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain mix-blend-multiply" priority />
+          <Link href="/become/dashboard" className="text-lg font-bold text-gray-900 tracking-tight">
+            VolunTutor
           </Link>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm font-medium text-gray-800 sm:block">
@@ -985,6 +987,7 @@ export default function TutorDashboard() {
               <div className="mt-5 grid grid-cols-2 gap-3">
                 <Stat label="Students" value={matches.length} />
                 <Stat label="Sessions" value={totalSessions} />
+                <Stat label="Hours Worked" value={hoursWorked} />
               </div>
             </div>
 

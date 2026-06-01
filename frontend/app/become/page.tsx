@@ -3,7 +3,6 @@
 import { useState, useId, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import {
   Dialog,
   DialogContent,
@@ -19,16 +18,7 @@ import { useAuth } from "@/context/auth-context";
 import { validateEmail, verifyEmailDomain } from "@/lib/email-validation";
 import { generateOTP, storeOTP, verifyOTP, sendOTP } from "@/lib/otp";
 import * as db from "@/lib/db";
-
-function BrandMark() {
-  return (
-    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-amber-100 border border-amber-300">
-      <svg className="stroke-amber-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="12" strokeWidth="8" />
-      </svg>
-    </div>
-  );
-}
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 
 function GoogleIcon() {
   return (
@@ -97,11 +87,18 @@ function SignUpDialog() {
         if (existing.status === "denied") {
           setError(`Your previous application was denied${existing.review_note ? `: "${existing.review_note}"` : ""}. Please contact support.`); return;
         }
-        setError("An account with this email already exists. Please sign in."); return;
-      }
-      const user = await db.getUserByEmail(email.trim().toLowerCase());
-      if (user) {
-        setError("An account with this email already exists. Please sign in."); return;
+        // Approved — only block if the user account still actually exists
+        const user = await db.getUserByEmail(email.trim().toLowerCase());
+        if (user) {
+          setError("An account with this email already exists. Please sign in."); return;
+        }
+        // Account was deleted by admin — remove the stale application and allow re-registration
+        await db.deleteApplication(existing.id).catch(() => { /* ignore */ });
+      } else {
+        const user = await db.getUserByEmail(email.trim().toLowerCase());
+        if (user) {
+          setError("An account with this email already exists. Please sign in."); return;
+        }
       }
     } catch { /* ignore */ }
     setVerifying(true);
@@ -167,7 +164,7 @@ function SignUpDialog() {
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <div className="flex flex-col items-center gap-2">
-          <BrandMark />
+
           <DialogHeader>
             <DialogTitle className="sm:text-center">
               {step === "otp" ? "Check your inbox" : "Apply to become a VolunTutor"}
@@ -352,7 +349,7 @@ function SignInDialog() {
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
-          <BrandMark />
+
           <DialogHeader>
             <DialogTitle className="sm:text-center">Welcome back</DialogTitle>
             <DialogDescription className="sm:text-center">Enter your credentials to continue tutoring.</DialogDescription>
@@ -423,7 +420,7 @@ export default function BecomePage() {
   if (isLoading) return null;
 
   return (
-    <RhythmicRipplesBackground backgroundColor="#ffffff" rippleColor="rgba(247, 184, 1, 0.4)" rippleCount={18} rippleSpeed={0.4}>
+    <FloatingPathsBg>
       <div className="absolute top-6 left-6">
         <Link href="/" className="group inline-flex items-center gap-2 text-sm font-semibold text-gray-500 transition-colors hover:text-amber-600">
           <span className="flex size-8 items-center justify-center rounded-full border border-gray-200 bg-white/80 shadow-sm transition group-hover:border-amber-300 group-hover:bg-amber-50">
@@ -469,6 +466,6 @@ export default function BecomePage() {
           </div>
         </div>
       </div>
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }

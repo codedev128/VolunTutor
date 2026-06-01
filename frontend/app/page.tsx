@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ReviewsSection } from "@/components/reviews-section";
 import { AuthRedirect } from "@/components/auth-redirect";
-import { NestedSquares } from "@/components/ui/nested-squares";
+import { FloatingPaths } from "@/components/ui/floating-paths";
 
 export default function Home() {
   return (
@@ -9,9 +9,10 @@ export default function Home() {
       <AuthRedirect />
       {/* ── Hero ───────────────────────────────────── */}
       <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-white px-6">
-        {/* Nested squares background animation */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-25">
-          <NestedSquares />
+        {/* Floating paths background animation */}
+        <div className="pointer-events-none absolute inset-0 text-amber-400/40">
+          <FloatingPaths position={1} />
+          <FloatingPaths position={-1} />
         </div>
 
         <div className="relative z-10 flex flex-col items-center text-center">

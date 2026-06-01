@@ -61,6 +61,10 @@ export default function ModDashboard() {
   const [mounted, setMounted]       = useState(false);
   const [mod, setMod]               = useState<Moderator | null>(null);
   const [applications, setApplications] = useState<TutorApplication[]>([]);
+  const [reports, setReports]        = useState<db.DbTutorReport[]>([]);
+  const [tutors, setTutors]          = useState<Array<{ id: string; name: string; email: string; hoursWorked: number }>>([]);
+  const [editingHours, setEditingHours] = useState<Record<string, string>>({});
+  const [mainTab, setMainTab]        = useState<"applications" | "reports" | "tutors">("applications");
   const [filter, setFilter]         = useState<"pending" | "approved" | "denied" | "all">("pending");
   const [denyNotes, setDenyNotes]   = useState<Record<string, string>>({});
   const [showDenyFor, setShowDenyFor] = useState<string | null>(null);
@@ -77,9 +81,27 @@ export default function ModDashboard() {
         setMod({ id: found.id, name: found.name, email: found.email });
       } catch { router.replace("/mod"); return; }
       loadApplications();
+      loadReports();
+      loadTutors();
     }
     init();
   }, [router]);
+
+  function loadReports() {
+    db.getReports().then(setReports).catch(() => { /* ignore */ });
+  }
+
+  async function loadTutors() {
+    try {
+      const allUsers = await db.getUsers();
+      const tutorList = allUsers.filter((u) => u.role === "tutor");
+      const enriched = await Promise.all(tutorList.map(async (t) => {
+        const profile = await db.getTutorProfile(t.id).catch(() => null);
+        return { id: t.id, name: t.name, email: t.email, hoursWorked: profile?.hours_worked ?? 0 };
+      }));
+      setTutors(enriched);
+    } catch { /* ignore */ }
+  }
 
   function loadApplications() {
     db.getApplications().then((apps) => {
@@ -151,6 +173,7 @@ export default function ModDashboard() {
 
   const filtered = filter === "all" ? applications : applications.filter((a) => a.status === filter);
   const pendingCount = applications.filter((a) => a.status === "pending").length;
+  const pendingReports = reports.filter((r) => r.status === "pending").length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -172,9 +195,9 @@ export default function ModDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {pendingCount > 0 && (
+            {(pendingCount + pendingReports) > 0 && (
               <span className="rounded-full bg-amber-400/20 border border-amber-400/30 px-2.5 py-0.5 text-xs font-bold text-amber-400">
-                {pendingCount} pending
+                {pendingCount + pendingReports} pending
               </span>
             )}
             <button onClick={signOut}
@@ -189,7 +212,24 @@ export default function ModDashboard() {
       </header>
 
       <div className="mx-auto max-w-5xl px-6 py-8">
-        {/* Filter tabs */}
+        {/* Main tabs */}
+        <div className="flex gap-1 mb-6 rounded-xl border border-slate-800 bg-slate-900 p-1.5 w-fit">
+          <button onClick={() => setMainTab("applications")}
+            className={`rounded-lg px-5 py-2 text-sm font-semibold transition ${mainTab === "applications" ? "bg-amber-400 text-slate-900 shadow-sm" : "text-slate-400 hover:text-white"}`}>
+            Applications {pendingCount > 0 && <span className="ml-1.5 rounded-full bg-amber-200/20 px-1.5 text-[10px] font-black">{pendingCount}</span>}
+          </button>
+          <button onClick={() => setMainTab("reports")}
+            className={`rounded-lg px-5 py-2 text-sm font-semibold transition ${mainTab === "reports" ? "bg-amber-400 text-slate-900 shadow-sm" : "text-slate-400 hover:text-white"}`}>
+            Reports {pendingReports > 0 && <span className="ml-1.5 rounded-full bg-red-400/20 px-1.5 text-[10px] font-black text-red-400">{pendingReports}</span>}
+          </button>
+          <button onClick={() => { setMainTab("tutors"); loadTutors(); }}
+            className={`rounded-lg px-5 py-2 text-sm font-semibold transition ${mainTab === "tutors" ? "bg-amber-400 text-slate-900 shadow-sm" : "text-slate-400 hover:text-white"}`}>
+            Tutors ({tutors.length})
+          </button>
+        </div>
+
+        {/* Application filter sub-tabs */}
+        {mainTab === "applications" && (
         <div className="flex flex-wrap gap-1 mb-8 rounded-xl border border-slate-800 bg-slate-900 p-1.5 w-fit">
           {([
             { id: "pending",  label: `Pending (${applications.filter((a) => a.status === "pending").length})` },
@@ -198,20 +238,21 @@ export default function ModDashboard() {
             { id: "all",      label: `All (${applications.length})` },
           ] as const).map(({ id, label }) => (
             <button key={id} onClick={() => setFilter(id)}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${filter === id ? "bg-amber-400 text-slate-900 shadow-sm" : "text-slate-400 hover:text-white"}`}>
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${filter === id ? "bg-slate-700 text-white shadow-sm" : "text-slate-400 hover:text-white"}`}>
               {label}
             </button>
           ))}
         </div>
+        )}
 
         {/* Application list */}
-        {filtered.length === 0 && (
+        {mainTab === "applications" && filtered.length === 0 && (
           <div className="rounded-2xl border border-slate-800 bg-slate-900 py-20 text-center">
             <p className="text-slate-500">No {filter === "all" ? "" : filter} applications.</p>
           </div>
         )}
 
-        <div className="space-y-4">
+        {mainTab === "applications" && <div className="space-y-4">
           {filtered.map((app) => (
             <div key={app.id} className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden">
               {/* Top row */}
@@ -286,7 +327,121 @@ export default function ModDashboard() {
               )}
             </div>
           ))}
-        </div>
+        </div>}
+
+        {/* Tutors list */}
+        {mainTab === "tutors" && (
+          <div className="space-y-3">
+            {tutors.length === 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 py-20 text-center">
+                <p className="text-slate-500">No tutors registered yet.</p>
+              </div>
+            )}
+            {tutors.map((t) => {
+              const initials = t.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+              const isEditing = t.id in editingHours;
+              return (
+                <div key={t.id} className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <div className="flex items-center gap-4">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-sm font-bold text-amber-400 border border-amber-400/20">
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-white">{t.name}</p>
+                      <p className="text-xs text-slate-400">{t.email}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        {isEditing ? (
+                          <>
+                            <input
+                              type="number" min="0" step="0.5"
+                              value={editingHours[t.id]}
+                              onChange={(e) => setEditingHours((p) => ({ ...p, [t.id]: e.target.value }))}
+                              className="w-24 rounded-lg border border-amber-400/40 bg-slate-800 px-2 py-1 text-xs text-white focus:border-amber-400 focus:outline-none"
+                              autoFocus
+                            />
+                            <span className="text-xs text-slate-400">hrs</span>
+                            <button
+                              onClick={async () => {
+                                const h = parseFloat(editingHours[t.id]);
+                                if (!isNaN(h) && h >= 0) {
+                                  await db.setTutorHours(t.id, h).catch(() => {});
+                                  setTutors((prev) => prev.map((x) => x.id === t.id ? { ...x, hoursWorked: h } : x));
+                                }
+                                setEditingHours((p) => { const n = { ...p }; delete n[t.id]; return n; });
+                              }}
+                              className="rounded-lg bg-amber-400 px-2.5 py-1 text-xs font-bold text-slate-900 hover:bg-amber-300 transition">
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingHours((p) => { const n = { ...p }; delete n[t.id]; return n; })}
+                              className="text-slate-500 hover:text-slate-300 transition">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <span className="text-xs text-slate-400"><span className="font-semibold text-slate-200">{t.hoursWorked}</span> hrs worked</span>
+                            <button
+                              onClick={() => setEditingHours((p) => ({ ...p, [t.id]: String(t.hoursWorked) }))}
+                              className="ml-1 text-slate-600 hover:text-amber-400 transition" title="Edit hours">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Reports list */}
+        {mainTab === "reports" && (
+          <div className="space-y-3">
+            {reports.length === 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 py-20 text-center">
+                <p className="text-slate-500">No reports submitted yet.</p>
+              </div>
+            )}
+            {reports.map((r) => (
+              <div key={r.id} className={`rounded-2xl border bg-slate-900 p-5 ${r.status === "pending" ? "border-red-500/30" : "border-slate-800 opacity-70"}`}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <Badge label={r.status} color={r.status === "pending" ? "red" : r.status === "reviewed" ? "green" : "slate"} />
+                      <p className="font-bold text-white">{r.reason}</p>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      <span className="text-slate-300 font-medium">{r.student_name}</span> reported <span className="text-slate-300 font-medium">{r.tutor_name}</span>
+                    </p>
+                    {r.details && <p className="mt-2 text-sm text-slate-400 italic">&ldquo;{r.details}&rdquo;</p>}
+                    <p className="mt-1.5 text-xs text-slate-600">
+                      {new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      {r.reviewed_by && ` · Reviewed by ${r.reviewed_by}`}
+                    </p>
+                  </div>
+                  {r.status === "pending" && (
+                    <div className="flex shrink-0 flex-col gap-2">
+                      <button
+                        onClick={async () => { await db.updateReportStatus(r.id, "reviewed", mod?.name ?? "Moderator").catch(() => {}); loadReports(); }}
+                        className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 transition">
+                        Mark Reviewed
+                      </button>
+                      <button
+                        onClick={async () => { await db.updateReportStatus(r.id, "dismissed", mod?.name ?? "Moderator").catch(() => {}); loadReports(); }}
+                        className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 hover:border-slate-600 transition">
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

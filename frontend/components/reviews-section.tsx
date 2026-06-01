@@ -14,38 +14,6 @@ interface Review {
   createdAt: string;
 }
 
-const SEED_REVIEWS: Review[] = [
-  {
-    id: "s1", name: "Priya Mehta", role: "student",
-    message: "My tutor helped me go from barely passing to an A in Mathematics. The patience and clarity was incredible — I finally understand quadratics!",
-    rating: 5, createdAt: "2026-04-12",
-  },
-  {
-    id: "s2", name: "James Okafor", role: "tutor",
-    message: "Giving back through VolunTutor has been one of the most rewarding things I've done. The matching process is seamless and my students are genuinely motivated.",
-    rating: 5, createdAt: "2026-04-18",
-  },
-  {
-    id: "s3", name: "Sofia Chen", role: "student",
-    message: "I was nervous at first but my tutor was so patient. We worked through Biology at exactly my pace and I felt completely heard.",
-    rating: 4, createdAt: "2026-04-25",
-  },
-  {
-    id: "s4", name: "Marcus Williams", role: "tutor",
-    message: "A simple, beautiful platform. I've now tutored three students and each experience has been uniquely rewarding. Highly recommend volunteering.",
-    rating: 5, createdAt: "2026-05-02",
-  },
-  {
-    id: "s5", name: "Anika Sharma", role: "student",
-    message: "Free tutoring that's actually great? I couldn't believe it. VolunTutor matched me with a Physics expert within days of submitting.",
-    rating: 5, createdAt: "2026-05-08",
-  },
-  {
-    id: "s6", name: "Leo Fernandez", role: "tutor",
-    message: "The scheduling timetable is brilliant. My students can see exactly when I'm free and pick slots that work for both of us — zero friction.",
-    rating: 4, createdAt: "2026-05-14",
-  },
-];
 
 /* ── Star display (read-only) ────────────────────────── */
 function StarDisplay({ rating }: { rating: number }) {
@@ -357,9 +325,9 @@ export function ReviewsSection() {
           rating: r.rating,
           createdAt: r.created_at ?? new Date().toISOString().split("T")[0],
         }));
-        setReviews([...mapped, ...SEED_REVIEWS]);
+        setReviews(mapped);
       } catch {
-        setReviews(SEED_REVIEWS);
+        setReviews([]);
       }
     }
     loadReviews();

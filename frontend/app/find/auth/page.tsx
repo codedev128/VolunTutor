@@ -3,7 +3,7 @@
 import { useState, useId, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 import {
   Dialog,
   DialogContent,
@@ -17,17 +17,6 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
 import { validateEmail, verifyEmailDomain } from "@/lib/email-validation";
 import { generateOTP, storeOTP, verifyOTP, sendOTP } from "@/lib/otp";
-
-function BrandMark() {
-  return (
-    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-amber-100 border border-amber-300">
-      <svg className="stroke-amber-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" fill="none">
-        <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </div>
-  );
-}
 
 /* ── Sign Up Dialog ──────────────────────────────────── */
 function SignUpDialog() {
@@ -102,7 +91,7 @@ function SignUpDialog() {
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
-          <BrandMark />
+
           <DialogHeader>
             <DialogTitle className="sm:text-center">
               {step === "otp" ? "Check your inbox" : "Find your VolunTutor"}
@@ -244,7 +233,7 @@ function SignInDialog() {
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
-          <BrandMark />
+
           <DialogHeader>
             <DialogTitle className="sm:text-center">Welcome back</DialogTitle>
             <DialogDescription className="sm:text-center">Sign in to view your matches and submit new requests.</DialogDescription>
@@ -304,7 +293,7 @@ export default function FindAuthPage() {
   if (isLoading) return null;
 
   return (
-    <RhythmicRipplesBackground backgroundColor="#ffffff" rippleColor="rgba(247, 184, 1, 0.4)" rippleCount={18} rippleSpeed={0.4}>
+    <FloatingPathsBg>
       <div className="absolute top-6 left-6">
         <Link href="/" className="group inline-flex items-center gap-2 text-sm font-semibold text-gray-500 transition-colors hover:text-amber-600">
           <span className="flex size-8 items-center justify-center rounded-full border border-gray-200 bg-white/80 shadow-sm transition group-hover:border-amber-300 group-hover:bg-amber-50">
@@ -362,6 +351,6 @@ export default function FindAuthPage() {
           </Link>
         </p>
       </div>
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }

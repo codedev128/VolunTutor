@@ -3,10 +3,10 @@
 import { useState, useId, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import * as db from "@/lib/db";
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 
 export default function ModLoginPage() {
   const id = useId();
@@ -42,16 +42,8 @@ export default function ModLoginPage() {
   if (!mounted) return null;
 
   return (
-    <RhythmicRipplesBackground backgroundColor="#0f172a" rippleColor="rgba(251, 191, 36, 0.15)" rippleCount={14} rippleSpeed={0.3}>
+    <FloatingPathsBg dark>
       <div className="relative flex w-full max-w-sm flex-col items-center px-6">
-        {/* Logo */}
-        <div className="mb-8 flex size-14 items-center justify-center rounded-2xl bg-amber-400/20 border border-amber-400/30">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            <polyline points="9 12 11 14 15 10"/>
-          </svg>
-        </div>
-
         <h1 className="text-2xl font-bold text-white mb-1">Moderator Portal</h1>
         <p className="text-sm text-slate-400 mb-8 text-center">Sign in to review tutor applications</p>
 
@@ -111,6 +103,6 @@ export default function ModLoginPage() {
           <Link href="/become" className="text-amber-500 hover:underline">Tutor sign-in →</Link>
         </p>
       </div>
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }

@@ -3,10 +3,10 @@
 import { useState, useCallback, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/auth-context";
 import * as db from "@/lib/db";
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 
 /* ── Constants ───────────────────────────────────────── */
 const SUBJECTS = [
@@ -363,7 +363,7 @@ function FindPageContent() {
 
   if (submitted) {
     return (
-      <RhythmicRipplesBackground backgroundColor="#ffffff" rippleColor="rgba(247, 184, 1, 0.4)" rippleCount={18} rippleSpeed={0.4}>
+      <FloatingPathsBg>
         <div
           ref={confirmRef}
           role="alert"
@@ -459,12 +459,12 @@ function FindPageContent() {
             </button>
           </div>
         </div>
-      </RhythmicRipplesBackground>
+      </FloatingPathsBg>
     );
   }
 
   return (
-    <RhythmicRipplesBackground backgroundColor="#ffffff" rippleColor="rgba(247, 184, 1, 0.4)" rippleCount={18} rippleSpeed={0.4}>
+    <FloatingPathsBg>
       {/* Back to dashboard */}
       <div className="absolute top-6 left-6">
         <Link href="/find/dashboard" className="group inline-flex items-center gap-2 text-sm font-semibold text-gray-500 transition-colors hover:text-amber-600">
@@ -591,7 +591,7 @@ function FindPageContent() {
           <p className="text-center text-xs text-gray-400">Always free. No credit card required.</p>
         </div>
       </div>
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }
 

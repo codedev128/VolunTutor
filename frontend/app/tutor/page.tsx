@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/context/auth-context";
 
 /* ── Types ───────────────────────────────────────────── */
@@ -42,87 +41,6 @@ interface ScheduleSlot {
   subject?: string;
 }
 
-/* ── Mock data ───────────────────────────────────────── */
-const MOCK_ENROLLED: EnrolledStudent[] = [
-  { id: "e1", name: "Aisha Patel", subject: "Mathematics", grade: "Grade 9", avatar: "AP", sessionCount: 14, nextSession: "Mon 4:00 PM" },
-  { id: "e2", name: "Daniel Osei", subject: "Physics", grade: "Grade 11", avatar: "DO", sessionCount: 8, nextSession: "Tue 5:30 PM" },
-  { id: "e3", name: "Mei Lin", subject: "Chemistry", grade: "Grade 10", avatar: "ML", sessionCount: 22, nextSession: "Wed 4:00 PM" },
-  { id: "e4", name: "Carlos Rivera", subject: "Mathematics", grade: "Grade 8", avatar: "CR", sessionCount: 6, nextSession: "Thu 6:00 PM" },
-];
-
-const INITIAL_REQUESTS: StudentRequest[] = [
-  {
-    id: "r1",
-    name: "Priya Sharma",
-    age: 15,
-    grade: "Grade 10",
-    subject: "Physics",
-    level: "Beginner",
-    message: "I'm really struggling with Newton's laws and motion problems. My exams are in 6 weeks and I'd love a patient tutor who can explain concepts from scratch.",
-    requestedTimes: "Weekdays 5–7 PM or Saturday mornings",
-    avatar: "PS",
-  },
-  {
-    id: "r2",
-    name: "James Okafor",
-    age: 17,
-    grade: "Grade 12",
-    subject: "Mathematics",
-    level: "Intermediate",
-    message: "I need help with calculus — derivatives and integration specifically. I understand the basics but keep making errors on complex problems.",
-    requestedTimes: "Mon, Wed, Fri after 4 PM",
-    avatar: "JO",
-  },
-  {
-    id: "r3",
-    name: "Sofia Reyes",
-    age: 14,
-    grade: "Grade 9",
-    subject: "Chemistry",
-    level: "Beginner",
-    message: "The periodic table and chemical bonding are really confusing to me. I want to understand the 'why' behind reactions, not just memorise them.",
-    requestedTimes: "Tuesdays and Thursdays 3–5 PM",
-    avatar: "SR",
-  },
-  {
-    id: "r4",
-    name: "Liam Kowalski",
-    age: 16,
-    grade: "Grade 11",
-    subject: "Physics",
-    level: "Advanced",
-    message: "Looking for a tutor to help me prepare for the Physics Olympiad. I'm comfortable with the standard curriculum but want to tackle harder problem sets.",
-    requestedTimes: "Weekends, flexible timing",
-    avatar: "LK",
-  },
-];
-
-const SUBJECTS: Subject[] = [
-  { name: "Mathematics", level: "Expert",     education: "M.Sc. Pure Mathematics" },
-  { name: "Physics",     level: "Expert",     education: "B.Sc. Physics (Hons.)" },
-  { name: "Chemistry",   level: "Proficient", education: "B.Sc. Chemistry" },
-  { name: "Biology",     level: "Familiar",   education: "Minor — Life Sciences" },
-];
-
-const SCHEDULE: { day: string; slots: ScheduleSlot[] }[] = [
-  { day: "Mon", slots: [
-    { time: "4:00 PM", studentName: "Aisha Patel",   studentAvatar: "AP", subject: "Mathematics" },
-    { time: "5:30 PM" },
-  ]},
-  { day: "Tue", slots: [
-    { time: "5:30 PM", studentName: "Daniel Osei",   studentAvatar: "DO", subject: "Physics" },
-  ]},
-  { day: "Wed", slots: [
-    { time: "4:00 PM", studentName: "Mei Lin",       studentAvatar: "ML", subject: "Chemistry" },
-    { time: "6:00 PM" },
-  ]},
-  { day: "Thu", slots: [
-    { time: "6:00 PM", studentName: "Carlos Rivera", studentAvatar: "CR", subject: "Mathematics" },
-  ]},
-  { day: "Fri",  slots: [] },
-  { day: "Sat",  slots: [{ time: "10:00 AM" }, { time: "11:30 AM" }] },
-  { day: "Sun",  slots: [] },
-];
 
 /* ── Avatar ──────────────────────────────────────────── */
 function Avatar({ initials, size = "md", color = "amber" }: { initials: string; size?: "sm" | "md" | "lg"; color?: "amber" | "blue" | "green" | "purple" | "rose" }) {
@@ -177,8 +95,8 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 export default function TutorDashboard() {
   const router = useRouter();
   const { user, isLoading, signOut } = useAuth();
-  const [requests, setRequests] = useState<StudentRequest[]>(INITIAL_REQUESTS);
-  const [enrolled, setEnrolled] = useState<EnrolledStudent[]>(MOCK_ENROLLED);
+  const [requests, setRequests] = useState<StudentRequest[]>([]);
+  const [enrolled, setEnrolled] = useState<EnrolledStudent[]>([]);
   const [activeTab, setActiveTab] = useState<"requests" | "students">("requests");
   const [declinedId, setDeclinedId] = useState<string | null>(null);
 
@@ -227,15 +145,8 @@ export default function TutorDashboard() {
       {/* ── Navbar ── */}
       <nav className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
-          <Link href="/" className="flex items-center">
-            <Image
-              src="/Guide_app_logo.png"
-              alt="VolunTutor"
-              width={160}
-              height={56}
-              className="h-14 w-auto object-contain mix-blend-multiply"
-              priority
-            />
+          <Link href="/" className="text-lg font-bold text-gray-900 tracking-tight">
+            VolunTutor
           </Link>
 
           <div className="flex items-center gap-4">
@@ -290,7 +201,7 @@ export default function TutorDashboard() {
             <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
               <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-amber-600">Subject Proficiency</h3>
               <div className="space-y-3">
-                {SUBJECTS.map((s) => (
+                {([] as Subject[]).map((s) => (
                   <div key={s.name} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-gray-800">{s.name}</p>
@@ -306,7 +217,7 @@ export default function TutorDashboard() {
             <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
               <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-amber-600">Weekly Schedule</h3>
               <div className="space-y-2.5">
-                {SCHEDULE.map((d) => (
+                {([] as { day: string; slots: ScheduleSlot[] }[]).map((d) => (
                   <div key={d.day} className="flex items-start gap-3">
                     <span className="w-8 shrink-0 pt-0.5 text-xs font-bold text-gray-400">{d.day}</span>
                     {d.slots.length > 0 ? (

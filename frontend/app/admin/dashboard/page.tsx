@@ -154,18 +154,20 @@ type EnrichedTutor = StoredUser & {
   matchCount: number;
   ratings: Array<{ rating: number }>;
   avg: string | null;
+  hoursWorked: number;
 };
 
 /* ── Page ────────────────────────────────────────────── */
 export default function AdminDashboard() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [tab, setTab] = useState<"overview" | "tutors" | "students" | "requests" | "sessions" | "applications" | "moderators" | "reviews">("overview");
+  const [tab, setTab] = useState<"overview" | "tutors" | "students" | "requests" | "sessions" | "applications" | "moderators" | "reviews" | "reports">("overview");
   const [users, setUsers] = useState<StoredUser[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [reviews, setReviews] = useState<ReviewRecord[]>([]);
+  const [reports, setReports] = useState<db.DbTutorReport[]>([]);
   const [enrichedTutors, setEnrichedTutors] = useState<EnrichedTutor[]>([]);
   const [applications, setApplications] = useState<TutorApplication[]>([]);
   const [moderators, setModerators] = useState<Moderator[]>([]);
@@ -175,6 +177,10 @@ export default function AdminDashboard() {
   const [showDenyFor, setShowDenyFor] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ message: string; action: () => void | Promise<void> } | null>(null);
   const [search, setSearch] = useState("");
+  const [resetPhrase, setResetPhrase] = useState("");
+  const [editingHours, setEditingHours] = useState<Record<string, string>>({});
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -244,11 +250,12 @@ export default function AdminDashboard() {
       const enriched: EnrichedTutor[] = await Promise.all(tutorList.map(async (t) => {
         const profile = await db.getTutorProfile(t.id).catch(() => null);
         const subjects: Array<{ name: string }> = profile?.subjects ?? [];
+        const hoursWorked: number = profile?.hours_worked ?? 0;
         const matches = await db.getTutorMatches(t.id).catch(() => []);
         const matchCount = matches.length;
         const ratings = await db.getTutorRatings(t.id).catch(() => []);
         const avg = ratings.length ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1) : null;
-        return { id: t.id, name: t.name, email: t.email, role: t.role as "tutor" | "student", subjects, matchCount, ratings, avg };
+        return { id: t.id, name: t.name, email: t.email, role: t.role as "tutor" | "student", subjects, matchCount, ratings, avg, hoursWorked };
       }));
       setEnrichedTutors(enriched);
 
@@ -265,6 +272,10 @@ export default function AdminDashboard() {
         comment: r.comment,
         createdAt: r.created_at,
       })));
+
+      // Reports
+      const rpts = await db.getReports().catch(() => []);
+      setReports(rpts);
 
       // Applications
       const apps = await db.getApplications();
@@ -347,11 +358,16 @@ export default function AdminDashboard() {
     });
   }, []); // eslint-disable-line
 
-  const deleteAccount = useCallback((userId: string, userName: string) => {
+  const deleteAccount = useCallback((userId: string, userName: string, userEmail?: string) => {
     setConfirm({
       message: `Permanently delete ${userName}'s account? All their data will be removed. This cannot be undone.`,
       action: async () => {
         await db.deleteUser(userId).catch(() => { /* ignore */ });
+        // Also remove any associated tutor application so the email can be reused
+        if (userEmail) {
+          const app = await db.getApplicationByEmail(userEmail).catch(() => null);
+          if (app) await db.deleteApplication(app.id).catch(() => { /* ignore */ });
+        }
         // Sign out the deleted user if they are currently logged in
         try {
           const sess = JSON.parse(localStorage.getItem("vt_session") || "null");
@@ -390,6 +406,17 @@ export default function AdminDashboard() {
       },
     });
   }, []); // eslint-disable-line
+
+  const deleteApplication = useCallback((appId: string, appName: string) => {
+    setConfirm({
+      message: `Delete ${appName}'s application permanently? This cannot be undone.`,
+      action: async () => {
+        await db.deleteApplication(appId).catch(() => { /* ignore */ });
+        setApplications((prev) => prev.filter((a) => a.id !== appId));
+        setConfirm(null);
+      },
+    });
+  }, []);
 
   const adminDenyApp = useCallback((app: TutorApplication) => {
     const note = appDenyNotes[app.id] ?? "";
@@ -441,6 +468,22 @@ export default function AdminDashboard() {
     router.push("/find/auth");
   }
 
+  async function handleReset() {
+    if (resetPhrase !== "RESET") return;
+    setResetting(true);
+    try {
+      await db.resetAllData();
+      localStorage.removeItem("vt_session");
+      setShowResetModal(false);
+      setResetPhrase("");
+      await loadData();
+    } catch (e) {
+      console.error("Reset failed:", e);
+    } finally {
+      setResetting(false);
+    }
+  }
+
   const q = search.toLowerCase();
   const filteredTutors   = tutors.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
   const filteredStudents = students.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
@@ -452,6 +495,48 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.action} onCancel={() => setConfirm(null)} />}
+
+      {/* Reset modal */}
+      {showResetModal && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/70" onClick={() => { setShowResetModal(false); setResetPhrase(""); }} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-slate-900 p-6 shadow-2xl">
+              <div className="flex size-12 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20 mb-4">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <p className="text-base font-black text-white mb-1">Reset All Platform Data</p>
+              <p className="text-sm text-slate-400 mb-4 leading-relaxed">
+                This will permanently delete <span className="text-red-400 font-semibold">all users, applications, sessions, requests, and reviews</span>. Moderator accounts are preserved. This action cannot be undone.
+              </p>
+              <p className="text-xs text-slate-500 mb-2">Type <span className="font-mono font-bold text-red-400">RESET</span> to confirm</p>
+              <input
+                type="text"
+                value={resetPhrase}
+                onChange={(e) => setResetPhrase(e.target.value)}
+                placeholder="RESET"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-red-400 focus:outline-none mb-4"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowResetModal(false); setResetPhrase(""); }}
+                  className="flex-1 rounded-lg border border-slate-700 py-2.5 text-sm font-semibold text-slate-400 hover:bg-slate-800 transition">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReset}
+                  disabled={resetPhrase !== "RESET" || resetting}
+                  className="flex-1 rounded-lg bg-red-500 py-2.5 text-sm font-bold text-white transition hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {resetting ? "Resetting…" : "Reset Everything"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm">
@@ -503,6 +588,7 @@ export default function AdminDashboard() {
             { id: "applications",  label: `Applications (${applications.filter((a) => a.status === "pending").length} pending)` },
             { id: "moderators",    label: `Moderators (${moderators.length})` },
             { id: "reviews",       label: `Reviews (${reviews.length})` },
+            { id: "reports",       label: `Reports (${reports.filter((r) => r.status === "pending").length} pending)` },
           ] as const).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${tab === id ? "bg-amber-400 text-slate-900 shadow-sm" : "text-slate-400 hover:text-white"}`}>
@@ -563,6 +649,25 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
+
+            {/* Danger zone */}
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
+              <p className="text-xs font-bold uppercase tracking-widest text-red-400 mb-3">Danger Zone</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-white">Reset All Platform Data</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Permanently delete all users, applications, sessions, requests, and reviews. Moderators are preserved.</p>
+                </div>
+                <button
+                  onClick={() => setShowResetModal(true)}
+                  className="flex shrink-0 items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-400 hover:bg-red-500/20 transition">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                  </svg>
+                  Reset Everything
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -581,7 +686,9 @@ export default function AdminDashboard() {
               const matchCount = enriched?.matchCount ?? 0;
               const ratings = enriched?.ratings ?? [];
               const avg = enriched?.avg ?? null;
+              const hoursWorked = enriched?.hoursWorked ?? 0;
               const initials = t.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+              const isEditingHours = t.id in editingHours;
               return (
                 <div key={t.id} className={`rounded-2xl border bg-slate-900 p-5 ${isBanned ? "border-red-500/30 opacity-60" : "border-slate-800"}`}>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -601,6 +708,48 @@ export default function AdminDashboard() {
                           <span>·</span>
                           <span>{matchCount} active match{matchCount !== 1 ? "es" : ""}</span>
                           {avg && <><span>·</span><span className="text-amber-400">★ {avg} ({ratings.length})</span></>}
+                        </div>
+                        {/* Hours worked */}
+                        <div className="mt-2.5 flex items-center gap-2">
+                          {isEditingHours ? (
+                            <>
+                              <input
+                                type="number" min="0" step="0.5"
+                                value={editingHours[t.id]}
+                                onChange={(e) => setEditingHours((p) => ({ ...p, [t.id]: e.target.value }))}
+                                className="w-24 rounded-lg border border-amber-400/40 bg-slate-800 px-2 py-1 text-xs text-white focus:border-amber-400 focus:outline-none"
+                                autoFocus
+                              />
+                              <span className="text-xs text-slate-400">hrs</span>
+                              <button
+                                onClick={async () => {
+                                  const h = parseFloat(editingHours[t.id]);
+                                  if (!isNaN(h) && h >= 0) {
+                                    await db.setTutorHours(t.id, h).catch(() => {});
+                                    setEnrichedTutors((prev) => prev.map((e) => e.id === t.id ? { ...e, hoursWorked: h } : e));
+                                  }
+                                  setEditingHours((p) => { const n = { ...p }; delete n[t.id]; return n; });
+                                }}
+                                className="rounded-lg bg-amber-400 px-2.5 py-1 text-xs font-bold text-slate-900 hover:bg-amber-300 transition">
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setEditingHours((p) => { const n = { ...p }; delete n[t.id]; return n; })}
+                                className="text-slate-500 hover:text-slate-300 transition">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                              <span className="text-xs text-slate-400"><span className="font-semibold text-slate-200">{hoursWorked}</span> hrs worked</span>
+                              <button
+                                onClick={() => setEditingHours((p) => ({ ...p, [t.id]: String(hoursWorked) }))}
+                                className="ml-1 text-slate-600 hover:text-amber-400 transition" title="Edit hours">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              </button>
+                            </>
+                          )}
                         </div>
                         {subjects.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -623,7 +772,7 @@ export default function AdminDashboard() {
                         {isBanned ? "Unban" : "Ban"}
                       </button>
                       <button
-                        onClick={() => deleteAccount(t.id, t.name)}
+                        onClick={() => deleteAccount(t.id, t.name, t.email)}
                         className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 hover:border-red-500/40 hover:text-red-400 transition">
                         Delete
                       </button>
@@ -681,7 +830,7 @@ export default function AdminDashboard() {
                         {isBanned ? "Unban" : "Ban"}
                       </button>
                       <button
-                        onClick={() => deleteAccount(s.id, s.name)}
+                        onClick={() => deleteAccount(s.id, s.name, s.email)}
                         className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 hover:border-red-500/40 hover:text-red-400 transition">
                         Delete
                       </button>
@@ -881,20 +1030,32 @@ export default function AdminDashboard() {
                       {app.reviewNote && <span className="text-red-400">Note: &ldquo;{app.reviewNote}&rdquo;</span>}
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      const a = document.createElement("a");
-                      a.href = app.cvDataUrl;
-                      a.download = app.cvFileName;
-                      a.click();
-                    }}
-                    className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                      <line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/>
-                    </svg>
-                    {app.cvFileName}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {app.cvDataUrl && (
+                      <button
+                        onClick={() => {
+                          const a = document.createElement("a");
+                          a.href = app.cvDataUrl;
+                          a.download = app.cvFileName;
+                          a.click();
+                        }}
+                        className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                          <line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/>
+                        </svg>
+                        {app.cvFileName}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteApplication(app.id, app.name)}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-400 hover:bg-red-500/20 transition">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 {app.status === "pending" && (
                   <div className="border-t border-slate-800 px-5 py-4">
@@ -1019,6 +1180,62 @@ export default function AdminDashboard() {
                   </svg>
                   Delete
                 </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Reports ── */}
+        {tab === "reports" && (
+          <div className="space-y-3">
+            {reports.length === 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 py-16 text-center">
+                <p className="text-slate-500">No reports submitted yet.</p>
+              </div>
+            )}
+            {reports.map((r) => (
+              <div key={r.id} className={`rounded-2xl border bg-slate-900 p-5 ${r.status === "pending" ? "border-red-500/30" : "border-slate-800 opacity-70"}`}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        r.status === "pending" ? "bg-red-500/10 border-red-500/20 text-red-400"
+                        : r.status === "reviewed" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                        : "bg-slate-700 border-slate-600 text-slate-300"
+                      }`}>{r.status}</span>
+                      <p className="font-bold text-white">{r.reason}</p>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      <span className="text-slate-300 font-medium">{r.student_name}</span> reported <span className="text-slate-300 font-medium">{r.tutor_name}</span>
+                    </p>
+                    {r.details && <p className="mt-2 text-sm text-slate-400 italic leading-relaxed">&ldquo;{r.details}&rdquo;</p>}
+                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
+                      <span>{new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                      {r.reviewed_by && <span>Reviewed by <span className="text-slate-300">{r.reviewed_by}</span></span>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2">
+                    {r.status === "pending" && (
+                      <>
+                        <button
+                          onClick={async () => { await db.updateReportStatus(r.id, "reviewed", "Admin").catch(() => {}); await loadData(); }}
+                          className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 transition">
+                          Mark Reviewed
+                        </button>
+                        <button
+                          onClick={async () => { await db.updateReportStatus(r.id, "dismissed", "Admin").catch(() => {}); await loadData(); }}
+                          className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-400 hover:border-slate-600 transition">
+                          Dismiss
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => setConfirm({ message: "Delete this report permanently?", action: async () => { await db.deleteReport(r.id).catch(() => {}); setReports((p) => p.filter((x) => x.id !== r.id)); setConfirm(null); } })}
+                      className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-xs font-bold text-red-400 hover:bg-red-500/20 transition">
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

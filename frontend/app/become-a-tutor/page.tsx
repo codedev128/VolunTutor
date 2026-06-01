@@ -3,7 +3,6 @@
 import { useState, useId, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import {
   Dialog,
   DialogContent,
@@ -16,17 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/context/auth-context";
-
-/* ── Brand icon ──────────────────────────────────────── */
-function BrandMark() {
-  return (
-    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-amber-100 border border-amber-300">
-      <svg className="stroke-amber-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32" fill="none">
-        <circle cx="16" cy="16" r="12" strokeWidth="8" />
-      </svg>
-    </div>
-  );
-}
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 
 /* ── Google icon ─────────────────────────────────────── */
 function GoogleIcon() {
@@ -94,7 +83,7 @@ function SignUpDialog() {
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
-          <BrandMark />
+
           <DialogHeader>
             <DialogTitle className="sm:text-center">Join as a Tutor</DialogTitle>
             <DialogDescription className="sm:text-center">
@@ -206,7 +195,7 @@ function SignInDialog() {
       </DialogTrigger>
       <DialogContent>
         <div className="flex flex-col items-center gap-2">
-          <BrandMark />
+
           <DialogHeader>
             <DialogTitle className="sm:text-center">Welcome back</DialogTitle>
             <DialogDescription className="sm:text-center">
@@ -295,12 +284,7 @@ export default function BecomeATutorPage() {
   if (isLoading) return null;
 
   return (
-    <RhythmicRipplesBackground
-      backgroundColor="#ffffff"
-      rippleColor="rgba(247, 184, 1, 0.4)"
-      rippleCount={18}
-      rippleSpeed={0.4}
-    >
+    <FloatingPathsBg>
       {/* Back button — top left, styled to match UI */}
       <div className="absolute top-6 left-6">
         <Link
@@ -358,6 +342,6 @@ export default function BecomeATutorPage() {
           </div>
         </div>
       </div>
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }

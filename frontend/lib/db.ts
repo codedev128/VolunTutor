@@ -105,6 +105,11 @@ export async function createApplication(app: Omit<DbApplication, "submitted_at" 
   if (error) throw error;
 }
 
+export async function deleteApplication(id: string): Promise<void> {
+  const { error } = await supabase.from("tutor_applications").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function updateApplicationStatus(
   id: string,
   status: "approved" | "denied",
@@ -126,6 +131,7 @@ export async function updateApplicationStatus(
 export interface DbTutorProfile {
   user_id: string;
   subjects: Array<{ name: string; proficiency: string; educationLevel: string }>;
+  hours_worked?: number;
 }
 
 export async function getTutorProfile(userId: string): Promise<DbTutorProfile | null> {
@@ -142,6 +148,13 @@ export async function setTutorProfile(userId: string, profile: { subjects: DbTut
   const { error } = await supabase
     .from("tutor_profiles")
     .upsert({ user_id: userId, subjects: profile.subjects, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+export async function setTutorHours(userId: string, hours: number): Promise<void> {
+  const { error } = await supabase
+    .from("tutor_profiles")
+    .upsert({ user_id: userId, hours_worked: hours, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
 
@@ -445,6 +458,77 @@ export async function createMessage(message: Omit<DbMessage, "id">): Promise<voi
     .update({ messages: [...existing, newMsg] })
     .eq("id", message.match_id);
   if (writeErr) throw writeErr;
+}
+
+/* ── Tutor reports ───────────────────────────────────── */
+
+export interface DbTutorReport {
+  id: string;
+  student_id?: string;
+  student_name: string;
+  tutor_id: string;
+  tutor_name: string;
+  match_id?: string;
+  reason: string;
+  details?: string;
+  status: "pending" | "reviewed" | "dismissed";
+  created_at: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+}
+
+export async function getReports(): Promise<DbTutorReport[]> {
+  const { data, error } = await supabase
+    .from("tutor_reports")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as DbTutorReport[];
+}
+
+export async function createReport(report: Omit<DbTutorReport, "status" | "created_at">): Promise<void> {
+  const { error } = await supabase.from("tutor_reports").insert({
+    ...report,
+    status: "pending",
+    created_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function updateReportStatus(
+  id: string,
+  status: "reviewed" | "dismissed",
+  reviewedBy: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("tutor_reports")
+    .update({ status, reviewed_by: reviewedBy, reviewed_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  const { error } = await supabase.from("tutor_reports").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/* ── Reset (admin) ───────────────────────────────────── */
+
+export async function resetAllData(): Promise<void> {
+  const tables = [
+    "tutor_matches",
+    "student_requests",
+    "tutor_ratings",
+    "tutor_profiles",
+    "reviews",
+    "tutor_reports",
+    "tutor_applications",
+    "users",
+  ];
+  for (const table of tables) {
+    const { error } = await supabase.from(table).delete().not("id", "is", null);
+    if (error) throw error;
+  }
 }
 
 export async function setMeetActive(

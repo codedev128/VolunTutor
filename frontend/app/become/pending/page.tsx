@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/auth-context";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 
 interface TutorApplication {
   id: string;
@@ -66,7 +66,7 @@ export default function BecomePendingPage() {
   if (!mounted) return null;
 
   return (
-    <RhythmicRipplesBackground backgroundColor="#ffffff" rippleColor="rgba(247, 184, 1, 0.4)" rippleCount={18} rippleSpeed={0.4}>
+    <FloatingPathsBg>
       <div className="relative flex flex-col items-center px-6 text-center w-full max-w-md">
 
         {/* ── Pending ── */}
@@ -155,6 +155,6 @@ export default function BecomePendingPage() {
         )}
 
       </div>
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }

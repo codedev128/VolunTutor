@@ -1041,6 +1041,12 @@ export default function StudentDashboard() {
   const [savedReviews, setSavedReviews] = useState<Record<string, { rating: number; body: string }>>({});
   const [meetInvites, setMeetInvites] = useState<Record<string, { active: boolean; gmeetUrl: string } | null>>({});
   const [meetToast, setMeetToast] = useState<{ matchId: string; tutorName: string } | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ tutorId: string; tutorName: string; matchId: string } | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportDone, setReportDone] = useState(false);
+  const [reportError, setReportError] = useState("");
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/find");
@@ -1327,6 +1333,39 @@ export default function StudentDashboard() {
     }).catch(() => { /* ignore */ });
   }
 
+  async function submitReport() {
+    if (!reportTarget || !reportReason || !user) return;
+    setReportSubmitting(true);
+    setReportError("");
+    try {
+      await db.createReport({
+        id: `rpt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        student_id: user.id,
+        student_name: user.name,
+        tutor_id: reportTarget.tutorId,
+        tutor_name: reportTarget.tutorName,
+        match_id: reportTarget.matchId,
+        reason: reportReason,
+        details: reportDetails.trim() || undefined,
+      });
+      setReportDone(true);
+    } catch (e) {
+      console.error("Report submission failed:", e);
+      setReportError("Failed to submit report. Please try again.");
+    } finally {
+      setReportSubmitting(false);
+    }
+  }
+
+  function closeReportModal() {
+    setReportTarget(null);
+    setReportReason("");
+    setReportDetails("");
+    setReportDone(false);
+    setReportSubmitting(false);
+    setReportError("");
+  }
+
   if (isLoading || !user) return null;
 
   const initials = user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
@@ -1357,6 +1396,85 @@ export default function StudentDashboard() {
           onClose={() => setReviewTarget(null)}
           onSubmit={(rating, body) => { submitReview(rating, body); }}
         />
+      )}
+
+      {/* Report modal */}
+      {reportTarget && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/50" onClick={closeReportModal} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+              {reportDone ? (
+                <div className="flex flex-col items-center gap-3 py-4 text-center">
+                  <span className="flex size-12 items-center justify-center rounded-full bg-emerald-100 border border-emerald-200">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </span>
+                  <p className="font-bold text-gray-900">Report submitted</p>
+                  <p className="text-sm text-gray-500">A moderator will review your report. Thank you for keeping VolunTutor safe.</p>
+                  <button onClick={closeReportModal} className="mt-2 rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-bold text-white hover:bg-gray-700 transition">Done</button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <p className="font-bold text-gray-900">Report {reportTarget.tutorName}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">This will be reviewed by a moderator</p>
+                    </div>
+                    <button onClick={closeReportModal} className="text-gray-400 hover:text-gray-600 transition">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Reason</p>
+                  <div className="grid grid-cols-1 gap-2 mb-4">
+                    {[
+                      "Harassment or bullying",
+                      "Inappropriate language",
+                      "Discriminatory behavior",
+                      "Unprofessional conduct",
+                      "Lateness / tardiness",
+                      "No-show / absence",
+                      "Frequent cancellations",
+                      "Poor teaching quality",
+                      "Other",
+                    ].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setReportReason(r)}
+                        className={`rounded-xl border px-4 py-2.5 text-left text-sm font-medium transition ${
+                          reportReason === r
+                            ? "border-red-300 bg-red-50 text-red-700"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Additional details <span className="normal-case font-normal text-gray-400">(optional)</span></p>
+                  <textarea
+                    rows={3}
+                    value={reportDetails}
+                    onChange={(e) => setReportDetails(e.target.value)}
+                    placeholder="Describe what happened…"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:border-amber-400 focus:outline-none resize-none mb-4"
+                  />
+                  {reportError && (
+                    <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{reportError}</p>
+                  )}
+                  <div className="flex gap-3">
+                    <button onClick={closeReportModal} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">Cancel</button>
+                    <button
+                      onClick={submitReport}
+                      disabled={!reportReason || reportSubmitting}
+                      className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-bold text-white hover:bg-red-600 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                      {reportSubmitting ? "Submitting…" : "Submit Report"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Meet invite toast */}
@@ -1412,8 +1530,8 @@ export default function StudentDashboard() {
       {/* Navbar */}
       <nav aria-label="Main navigation" className="sticky top-0 z-50 border-b border-black/10 bg-[#f7b801]">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2">
-          <Link href="/find/dashboard" className="flex items-center">
-            <Image src="/Guide_app_logo.png" alt="VolunTutor" width={160} height={56} className="h-14 w-auto object-contain mix-blend-multiply" priority />
+          <Link href="/find/dashboard" className="text-lg font-bold text-gray-900 tracking-tight">
+            VolunTutor
           </Link>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm font-medium text-gray-800 sm:block">
@@ -1577,6 +1695,15 @@ export default function StudentDashboard() {
                             <h4 className="font-bold text-gray-900">{match.tutorName}</h4>
                             <span className="text-xs text-gray-400">· Volunteer Tutor</span>
                             <StatusBadge status={match.status} />
+                            <button
+                              onClick={() => setReportTarget({ tutorId: match.tutorId, tutorName: match.tutorName, matchId: match.id })}
+                              title="Report this tutor"
+                              className="ml-1 flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-500">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                              </svg>
+                              Report
+                            </button>
                           </div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-gray-100 border border-gray-200 px-2.5 py-0.5 text-xs font-semibold text-gray-700">{match.subject}</span>

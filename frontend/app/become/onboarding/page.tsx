@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import * as db from "@/lib/db";
 import { useRouter } from "next/navigation";
-import RhythmicRipplesBackground from "@/components/ui/rhythmic-ripples-background";
 import { useAuth } from "@/context/auth-context";
+import { FloatingPathsBg } from "@/components/ui/floating-paths";
 
 /* ── Constants ───────────────────────────────────────── */
 const SUBJECTS = [
@@ -254,12 +254,7 @@ export default function OnboardingPage() {
   }, [selectedSubjects, proficiency, education, user, router]);
 
   return (
-    <RhythmicRipplesBackground
-      backgroundColor="#ffffff"
-      rippleColor="rgba(247, 184, 1, 0.4)"
-      rippleCount={18}
-      rippleSpeed={0.4}
-    >
+    <FloatingPathsBg>
       {step === 1 ? (
         <SubjectStep
           proficiency={proficiency}
@@ -276,6 +271,6 @@ export default function OnboardingPage() {
           onFinish={handleFinish}
         />
       )}
-    </RhythmicRipplesBackground>
+    </FloatingPathsBg>
   );
 }

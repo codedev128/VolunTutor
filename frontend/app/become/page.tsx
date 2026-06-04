@@ -337,7 +337,9 @@ function SignInDialog() {
     const result = await signIn(email.trim(), password);
     if (!result.ok) { setError(result.error ?? "Something went wrong."); setLoading(false); return; }
     if (result.user?.role === "student") { router.push("/find/dashboard"); return; }
-    router.push("/become/dashboard");
+    const profile = await db.getTutorProfile(result.user!.id).catch(() => null);
+    const hasSubjects = Array.isArray(profile?.subjects) && profile!.subjects.length > 0;
+    router.push(hasSubjects ? "/become/dashboard" : "/become/onboarding");
   }
 
   return (
@@ -411,7 +413,8 @@ export default function BecomePage() {
       if (user.role === "student") { router.replace("/find/dashboard"); return; }
       async function checkProfile() {
         const profile = await db.getTutorProfile(user!.id);
-        router.replace(profile ? "/become/dashboard" : "/become/onboarding");
+        const hasSubjects = Array.isArray(profile?.subjects) && profile!.subjects.length > 0;
+        router.replace(hasSubjects ? "/become/dashboard" : "/become/onboarding");
       }
       checkProfile();
     }

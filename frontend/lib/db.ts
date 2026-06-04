@@ -136,25 +136,25 @@ export interface DbTutorProfile {
 
 export async function getTutorProfile(userId: string): Promise<DbTutorProfile | null> {
   const { data, error } = await supabase
-    .from("tutor_profiles")
+    .from("tutor_data")
     .select("*")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data ?? null;
+  return data as DbTutorProfile | null;
 }
 
 export async function setTutorProfile(userId: string, profile: { subjects: DbTutorProfile["subjects"] }): Promise<void> {
   const { error } = await supabase
-    .from("tutor_profiles")
-    .upsert({ user_id: userId, subjects: profile.subjects, updated_at: new Date().toISOString() });
+    .from("tutor_data")
+    .upsert({ user_id: userId, subjects: profile.subjects }, { onConflict: "user_id" });
   if (error) throw error;
 }
 
 export async function setTutorHours(userId: string, hours: number): Promise<void> {
   const { error } = await supabase
-    .from("tutor_profiles")
-    .upsert({ user_id: userId, hours_worked: hours, updated_at: new Date().toISOString() });
+    .from("tutor_data")
+    .upsert({ user_id: userId, hours_worked: hours }, { onConflict: "user_id" });
   if (error) throw error;
 }
 
@@ -519,7 +519,7 @@ export async function resetAllData(): Promise<void> {
     "tutor_matches",
     "student_requests",
     "tutor_ratings",
-    "tutor_profiles",
+    "tutor_data",
     "reviews",
     "tutor_reports",
     "tutor_applications",

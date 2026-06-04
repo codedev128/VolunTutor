@@ -706,7 +706,7 @@ export default function AdminDashboard() {
                         <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
                           <span>{subjects.length} subject{subjects.length !== 1 ? "s" : ""}</span>
                           <span>·</span>
-                          <span>{matchCount} active match{matchCount !== 1 ? "es" : ""}</span>
+                          <span>{matchCount} student{matchCount !== 1 ? "s" : ""}</span>
                           {avg && <><span>·</span><span className="text-amber-400">★ {avg} ({ratings.length})</span></>}
                         </div>
                         {/* Hours worked */}
